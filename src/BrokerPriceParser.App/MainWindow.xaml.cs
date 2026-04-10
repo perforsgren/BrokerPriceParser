@@ -40,7 +40,7 @@ public partial class MainWindow : Window
     {
         var rawMessage = new RawBrokerMessage
         {
-            MessageId = "MSG-001",
+            MessageId = "MSG-001", 
             ConversationId = "CONV-001",
             Source = "ManualTest",
             Broker = "TestBroker",
