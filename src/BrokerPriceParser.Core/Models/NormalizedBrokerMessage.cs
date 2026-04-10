@@ -26,4 +26,29 @@ public sealed class NormalizedBrokerMessage
     /// Gets or sets extracted tokens useful for downstream parsing.
     /// </summary>
     public IReadOnlyList<string> Tokens { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Gets or sets the detected normalized currency pair, for example NOKSEK.
+    /// </summary>
+    public string DetectedCurrencyPair { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the detected tenor, for example 1W, 3M or 1Y.
+    /// </summary>
+    public string DetectedTenor { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the detected structure hint, for example RR, BF, ATM or ATMF.
+    /// </summary>
+    public string DetectedStructure { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the detected delta if present.
+    /// </summary>
+    public decimal? DetectedDelta { get; set; }
+
+    /// <summary>
+    /// Gets or sets the list of normalization rules that were applied.
+    /// </summary>
+    public IReadOnlyList<string> AppliedNormalizationRules { get; set; } = Array.Empty<string>();
 }

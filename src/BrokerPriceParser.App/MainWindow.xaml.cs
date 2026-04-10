@@ -40,7 +40,7 @@ public partial class MainWindow : Window
     {
         var rawMessage = new RawBrokerMessage
         {
-            MessageId = "MSG-001", 
+            MessageId = "MSG-001",
             ConversationId = "CONV-001",
             Source = "ManualTest",
             Broker = "TestBroker",
@@ -63,6 +63,10 @@ public partial class MainWindow : Window
         MessageBox.Show(
             $"Raw: {result.RawMessage}\n" +
             $"Normalized: {result.NormalizedMessage}\n" +
+            $"Detected Pair: {normalizedMessage.DetectedCurrencyPair}\n" +
+            $"Detected Tenor: {normalizedMessage.DetectedTenor}\n" +
+            $"Detected Structure: {normalizedMessage.DetectedStructure}\n" +
+            $"Detected Delta: {normalizedMessage.DetectedDelta}\n" +
             $"MessageType: {result.MessageType}\n" +
             $"EventType: {result.EventType}\n" +
             $"Confidence: {result.Quality.Confidence:F2}",

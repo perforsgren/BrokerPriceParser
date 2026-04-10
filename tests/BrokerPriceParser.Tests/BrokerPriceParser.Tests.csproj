@@ -28,7 +28,6 @@
   <ItemGroup>
     <Folder Include="Classification\" />
     <Folder Include="State\" />
-    <Folder Include="Normalization\" />
   </ItemGroup>
 
 </Project>
