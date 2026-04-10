@@ -1,6 +1,7 @@
 ﻿using System.Text;
 using System.Windows;
 using BrokerPriceParser.Core.Contracts;
+using BrokerPriceParser.Core.Llm;
 using BrokerPriceParser.Core.Models;
 using BrokerPriceParser.Core.State;
 
@@ -14,6 +15,8 @@ public partial class MainWindow : Window
     private readonly IBrokerMessageNormalizer _normalizer;
     private readonly IBrokerParseService _parseService;
     private readonly IConversationStateStore _stateStore;
+    private readonly IBrokerPromptBuilder _promptBuilder;
+    private readonly BrokerLlmSettings _llmSettings;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="MainWindow"/> class.
@@ -26,6 +29,8 @@ public partial class MainWindow : Window
         _normalizer = (IBrokerMessageNormalizer)app.Services.GetService(typeof(IBrokerMessageNormalizer))!;
         _parseService = (IBrokerParseService)app.Services.GetService(typeof(IBrokerParseService))!;
         _stateStore = (IConversationStateStore)app.Services.GetService(typeof(IConversationStateStore))!;
+        _promptBuilder = (IBrokerPromptBuilder)app.Services.GetService(typeof(IBrokerPromptBuilder))!;
+        _llmSettings = (BrokerLlmSettings)app.Services.GetService(typeof(BrokerLlmSettings))!;
 
         Loaded += MainWindow_Loaded;
     }
@@ -33,7 +38,7 @@ public partial class MainWindow : Window
     // ────────────────────────────────────
 
     /// <summary>
-    /// Runs a simple multi-message stateful smoke test when the window is loaded.
+    /// Runs a parser smoke test and shows the generated LLM prompt scaffold.
     /// </summary>
     /// <param name="sender">The sender instance.</param>
     /// <param name="e">The event arguments.</param>
@@ -44,10 +49,11 @@ public partial class MainWindow : Window
         {
             "NOK/SEK 1Y 25 delta rr pls",
             "showing 0.10/0.30 good",
-            "flat bid",
-            "paid 0.30",
-            "0.27 offer"
+            "ok take"
         };
+
+        ParseContext? lastContext = null;
+        BrokerParseResult? lastResult = null;
 
         var output = new StringBuilder();
 
@@ -76,6 +82,9 @@ public partial class MainWindow : Window
             var result = await _parseService.ParseAsync(context);
             _stateStore.Apply(conversationId, result, rawMessage.ReceivedUtc);
 
+            lastContext = context;
+            lastResult = result;
+
             output.AppendLine($"Input: {rawMessage.RawText}");
             output.AppendLine($"Normalized: {result.NormalizedMessage}");
             output.AppendLine($"MessageType: {result.MessageType}");
@@ -86,22 +95,27 @@ public partial class MainWindow : Window
             output.AppendLine($"Delta: {result.Instrument.Delta}");
             output.AppendLine($"Bid: {result.Quote.Bid}");
             output.AppendLine($"Ask: {result.Quote.Ask}");
-            output.AppendLine($"Mid: {result.Quote.Mid}");
-            output.AppendLine($"Quote Style: {result.Quote.QuoteStyle}");
-            output.AppendLine($"Is Firm: {result.Quote.IsFirm}");
             output.AppendLine($"Action Verb: {result.Action.Verb}");
             output.AppendLine($"Action Side: {result.Action.Side}");
             output.AppendLine($"Action Target: {result.Action.Target}");
-            output.AppendLine($"Linked To Prior Quote: {result.Action.LinkedToPriorQuote}");
-            output.AppendLine($"Used Context: {result.ContextUsage.UsedContext}");
-            output.AppendLine($"Resolved From Context: {string.Join(", ", result.ContextUsage.ResolvedFromContext)}");
-            output.AppendLine($"Unresolved References: {string.Join(", ", result.ContextUsage.UnresolvedReferences)}");
+            output.AppendLine($"Confidence: {result.Quality.Confidence:F2}");
             output.AppendLine(new string('-', 60));
+        }
+
+        if (lastContext is not null && lastResult is not null)
+        {
+            var llmRequest = _promptBuilder.Build(lastContext, lastResult, _llmSettings);
+
+            output.AppendLine("LLM Enabled:");
+            output.AppendLine(_llmSettings.IsEnabled.ToString());
+            output.AppendLine(new string('-', 60));
+            output.AppendLine("Generated Prompt Preview:");
+            output.AppendLine(llmRequest.Prompt);
         }
 
         MessageBox.Show(
             output.ToString(),
-            "Broker Parser Quote/Action v2 Smoke Test",
+            "Broker Parser Step 6 Smoke Test",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
     }

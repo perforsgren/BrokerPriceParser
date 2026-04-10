@@ -8,6 +8,8 @@ using BrokerPriceParser.Infrastructure.Parsing;
 using BrokerPriceParser.Infrastructure.Scoring;
 using BrokerPriceParser.Infrastructure.State;
 using BrokerPriceParser.Infrastructure.Validation;
+using BrokerPriceParser.Core.Llm;
+using BrokerPriceParser.Infrastructure.Llm;
 using Xunit;
 
 namespace BrokerPriceParser.Tests.State;
@@ -185,11 +187,24 @@ public sealed class BrokerQuoteAndActionExtractionTests
         var contextResolver = new ConversationContextResolver();
         var validationService = new BrokerValidationService();
         var confidenceScoringService = new ConfidenceScoringService();
+        var llmEnrichmentService = new BrokerLlmEnrichmentService(
+            new BrokerPromptBuilder(),
+            new NullBrokerLlmClient());
+
         var parseService = new BrokerParseService(
             classifier,
             contextResolver,
+            llmEnrichmentService,
             validationService,
-            confidenceScoringService);
+            confidenceScoringService,
+            new BrokerLlmSettings
+            {
+                IsEnabled = false,
+                UseOnlyForLowConfidence = true,
+                LowConfidenceThreshold = 0.55,
+                ModelName = "TEST",
+                MaxPriorMessages = 5
+            });
         var stateStore = new InMemoryConversationStateStore();
 
         return new ParserTestHarness(

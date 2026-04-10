@@ -1,13 +1,17 @@
 ﻿using BrokerPriceParser.Core.Contracts;
 using BrokerPriceParser.Core.Enums;
+using BrokerPriceParser.Core.Llm;
 using BrokerPriceParser.Core.Models;
 using BrokerPriceParser.Core.State;
 using BrokerPriceParser.Infrastructure.Classification;
+using BrokerPriceParser.Infrastructure.Llm;
 using BrokerPriceParser.Infrastructure.Normalization;
 using BrokerPriceParser.Infrastructure.Parsing;
 using BrokerPriceParser.Infrastructure.Scoring;
 using BrokerPriceParser.Infrastructure.State;
 using BrokerPriceParser.Infrastructure.Validation;
+using BrokerPriceParser.Core.Llm;
+using BrokerPriceParser.Infrastructure.Llm;
 using Xunit;
 
 namespace BrokerPriceParser.Tests.State;
@@ -123,11 +127,24 @@ public sealed class BrokerParseServiceStateTests
         var contextResolver = new ConversationContextResolver();
         var validationService = new BrokerValidationService();
         var confidenceScoringService = new ConfidenceScoringService();
+        var llmEnrichmentService = new BrokerLlmEnrichmentService(
+            new BrokerPromptBuilder(),
+            new NullBrokerLlmClient());
+
         var parseService = new BrokerParseService(
             classifier,
             contextResolver,
+            llmEnrichmentService,
             validationService,
-            confidenceScoringService);
+            confidenceScoringService,
+            new BrokerLlmSettings
+            {
+                IsEnabled = false,
+                UseOnlyForLowConfidence = true,
+                LowConfidenceThreshold = 0.55,
+                ModelName = "TEST",
+                MaxPriorMessages = 5
+            });
         var stateStore = new InMemoryConversationStateStore();
 
         return new ParserTestHarness(
