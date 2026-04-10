@@ -10,6 +10,19 @@ namespace BrokerPriceParser.Infrastructure.Classification;
 /// </summary>
 public sealed class BrokerMessageClassifier : IBrokerMessageClassifier
 {
+    private static readonly HashSet<string> NoiseMessages = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "OK",
+        "K",
+        "KK",
+        "THANKS",
+        "THX",
+        "TY",
+        "HI",
+        "HELLO",
+        "YO"
+    };
+
     /// <summary>
     /// Classifies a normalized broker message.
     /// </summary>
@@ -31,12 +44,17 @@ public sealed class BrokerMessageClassifier : IBrokerMessageClassifier
             return BrokerMessageType.ActionIntent;
         }
 
-        if (LooksLikeTwoWayQuote(text) || LooksLikeOneWayQuote(text))
+        if (LooksLikePriceUpdate(text))
+        {
+            return BrokerMessageType.PriceUpdate;
+        }
+
+        if (LooksLikePriceQuote(text))
         {
             return BrokerMessageType.PriceQuote;
         }
 
-        if (LooksLikeInstrumentRequest(text))
+        if (LooksLikeInstrumentRequest(text, message))
         {
             return BrokerMessageType.InstrumentRequest;
         }
@@ -44,6 +62,11 @@ public sealed class BrokerMessageClassifier : IBrokerMessageClassifier
         if (LooksLikeClarification(text))
         {
             return BrokerMessageType.Clarification;
+        }
+
+        if (LooksLikeNoise(text))
+        {
+            return BrokerMessageType.Noise;
         }
 
         return BrokerMessageType.Unknown;
@@ -58,7 +81,47 @@ public sealed class BrokerMessageClassifier : IBrokerMessageClassifier
     /// <returns><c>true</c> if the text resembles an action message; otherwise <c>false</c>.</returns>
     private static bool LooksLikeAction(string text)
     {
-        return Regex.IsMatch(text, @"\b(TAKE|TAK|MINE|LIFT|HIT|PAID|SOLD|YOURS|BUYER|SELLER)\b");
+        return Regex.IsMatch(
+            text,
+            @"\b(TAKE|TAK|MINE|LIFT|HIT|PAID|SOLD|YOURS|DONE|BUYER|SELLER)\b");
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Detects quote revision and update language such as FLAT BID or BETTER 0.10/0.30.
+    /// </summary>
+    /// <param name="text">The normalized text.</param>
+    /// <returns><c>true</c> if the text resembles a price update; otherwise <c>false</c>.</returns>
+    private static bool LooksLikePriceUpdate(string text)
+    {
+        if (Regex.IsMatch(text, @"\bFLAT\s+(BID|OFFER|OFR|ASK|MID)\b"))
+        {
+            return true;
+        }
+
+        var hasUpdateWord = Regex.IsMatch(
+            text,
+            @"\b(BETTER|WORSE|WIDER|TIGHTER|HIGHER|LOWER|REVISED|REVISE|UPDATE|UPDATED|IMPROVED|IMPROVE)\b");
+
+        var hasQuoteContext =
+            LooksLikeTwoWayQuote(text)
+            || Regex.IsMatch(text, @"\b(BID|OFFER|OFR|ASK|MID)\b")
+            || Regex.IsMatch(text, @"-?\d+(\.\d+)?");
+
+        return hasUpdateWord && hasQuoteContext;
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Detects quote-like messages.
+    /// </summary>
+    /// <param name="text">The normalized text.</param>
+    /// <returns><c>true</c> if the text resembles a quote; otherwise <c>false</c>.</returns>
+    private static bool LooksLikePriceQuote(string text)
+    {
+        return LooksLikeTwoWayQuote(text) || LooksLikeOneWayQuote(text);
     }
 
     // ────────────────────────────────────
@@ -76,7 +139,7 @@ public sealed class BrokerMessageClassifier : IBrokerMessageClassifier
     // ────────────────────────────────────
 
     /// <summary>
-    /// Detects a one-way quote combined with bid, offer or mid language.
+    /// Detects a one-way quote combined with bid, offer, ask or mid language.
     /// </summary>
     /// <param name="text">The normalized text.</param>
     /// <returns><c>true</c> if the text looks like a one-way quote; otherwise <c>false</c>.</returns>
@@ -92,28 +155,83 @@ public sealed class BrokerMessageClassifier : IBrokerMessageClassifier
     /// Detects an instrument or market request pattern.
     /// </summary>
     /// <param name="text">The normalized text.</param>
+    /// <param name="message">The normalized message metadata.</param>
     /// <returns><c>true</c> if the text resembles an instrument request; otherwise <c>false</c>.</returns>
-    private static bool LooksLikeInstrumentRequest(string text)
+    private static bool LooksLikeInstrumentRequest(string text, NormalizedBrokerMessage message)
     {
-        var containsPair = Regex.IsMatch(text, @"\b[A-Z]{6}\b");
-        var containsTenor = Regex.IsMatch(text, @"\b\d+(D|W|M|Y)\b");
-        var containsStructure = Regex.IsMatch(text, @"\b(RR|BF|ATM|ATMF)\b");
-        var containsMarketLanguage = Regex.IsMatch(text, @"\b(MKT|MARKET|PLS|PLEASE|WHERE|SHOW|PRICE)\b");
+        var containsRequestLanguage = Regex.IsMatch(
+            text,
+            @"\b(MKT|MARKET|PLS|PLEASE|WHERE|SHOW|PRICE|PRICING|ANY|RUN|LOOK)\b");
 
-        return (containsPair && containsTenor)
-            || (containsPair && containsStructure)
-            || (containsPair && containsMarketLanguage);
+        var hasPair = !string.IsNullOrWhiteSpace(message.DetectedCurrencyPair);
+        var hasTenor = !string.IsNullOrWhiteSpace(message.DetectedTenor);
+        var hasStructure = !string.IsNullOrWhiteSpace(message.DetectedStructure);
+        var hasDelta = message.DetectedDelta.HasValue;
+
+        if (hasPair && hasTenor)
+        {
+            return true;
+        }
+
+        if (hasPair && hasStructure)
+        {
+            return true;
+        }
+
+        if (hasPair && containsRequestLanguage)
+        {
+            return true;
+        }
+
+        if (hasTenor && hasStructure && containsRequestLanguage)
+        {
+            return true;
+        }
+
+        if (hasPair && hasTenor && hasDelta)
+        {
+            return true;
+        }
+
+        return false;
     }
 
     // ────────────────────────────────────
 
     /// <summary>
-    /// Detects clarification or follow-up messages.
+    /// Detects clarification or follow-up messages such as WHAT ABOUT 2Y or SAME IN 3M.
     /// </summary>
     /// <param name="text">The normalized text.</param>
     /// <returns><c>true</c> if the text resembles a clarification; otherwise <c>false</c>.</returns>
     private static bool LooksLikeClarification(string text)
     {
-        return Regex.IsMatch(text, @"\b(WHAT ABOUT|HOW ABOUT|SAME|BETTER|WIDER|TIGHTER|FLAT)\b");
+        if (Regex.IsMatch(text, @"\b(WHAT ABOUT|HOW ABOUT)\b"))
+        {
+            return true;
+        }
+
+        if (Regex.IsMatch(text, @"\bSAME\b"))
+        {
+            return true;
+        }
+
+        if (Regex.IsMatch(text, @"\bIN\s+\d+(D|W|M|Y)\b"))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Detects conversational noise or low-information acknowledgements.
+    /// </summary>
+    /// <param name="text">The normalized text.</param>
+    /// <returns><c>true</c> if the text resembles noise; otherwise <c>false</c>.</returns>
+    private static bool LooksLikeNoise(string text)
+    {
+        return NoiseMessages.Contains(text);
     }
 }

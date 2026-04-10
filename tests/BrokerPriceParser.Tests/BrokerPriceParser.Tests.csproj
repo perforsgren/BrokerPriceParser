@@ -26,7 +26,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Classification\" />
     <Folder Include="State\" />
   </ItemGroup>
 
