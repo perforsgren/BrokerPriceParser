@@ -48,6 +48,7 @@ public partial class App : Application
     {
         services.AddSingleton<IBrokerMessageNormalizer, BrokerMessageNormalizer>();
         services.AddSingleton<IBrokerMessageClassifier, BrokerMessageClassifier>();
+        services.AddSingleton<IConversationContextResolver, ConversationContextResolver>();
         services.AddSingleton<IConversationStateStore, InMemoryConversationStateStore>();
         services.AddSingleton<IBrokerValidationService, BrokerValidationService>();
         services.AddSingleton<IConfidenceScoringService, ConfidenceScoringService>();
