@@ -45,10 +45,9 @@ public sealed class BrokerPromptBuilder : IBrokerPromptBuilder
         var priorMessagesJson = JsonSerializer.Serialize(priorMessages, SerializerOptions);
         var currentParseResultJson = JsonSerializer.Serialize(currentResult, SerializerOptions);
         var outputSchemaJson = BuildOutputSchemaJson();
-
         var prompt = BuildPromptText(
             context,
-            currentResult,
+            currentParseResultJson,
             conversationStateJson,
             priorMessagesJson,
             outputSchemaJson);
@@ -71,52 +70,104 @@ public sealed class BrokerPromptBuilder : IBrokerPromptBuilder
     // ────────────────────────────────────
 
     /// <summary>
-    /// Builds the output schema contract that the LLM must follow.
+    /// Builds the strict JSON schema used for Structured Outputs.
     /// </summary>
-    /// <returns>A JSON schema-like contract string.</returns>
+    /// <returns>The serialized JSON schema.</returns>
     private static string BuildOutputSchemaJson()
     {
         var schema = new
         {
-            messageType = "string",
-            eventType = "string",
-            instrument = new
+            type = "object",
+            properties = new
             {
-                pair = "string",
-                tenor = "string",
-                expiry = "string",
-                structure = "string",
-                delta = "number|null",
-                strikeType = "string",
-                strike = "string",
-                optionSideBias = "string"
+                messageType = new
+                {
+                    type = "string"
+                },
+                eventType = new
+                {
+                    type = "string"
+                },
+                instrument = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        pair = new { type = "string" },
+                        tenor = new { type = "string" },
+                        expiry = new { type = "string" },
+                        structure = new { type = "string" },
+                        delta = new { type = "string" },
+                        strikeType = new { type = "string" },
+                        strike = new { type = "string" },
+                        optionSideBias = new { type = "string" }
+                    },
+                    required = new[]
+                    {
+                        "pair", "tenor", "expiry", "structure", "delta", "strikeType", "strike", "optionSideBias"
+                    },
+                    additionalProperties = false
+                },
+                quote = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        bid = new { type = "string" },
+                        ask = new { type = "string" },
+                        mid = new { type = "string" },
+                        quoteStyle = new { type = "string" },
+                        isFirm = new { type = "string" }
+                    },
+                    required = new[]
+                    {
+                        "bid", "ask", "mid", "quoteStyle", "isFirm"
+                    },
+                    additionalProperties = false
+                },
+                action = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        verb = new { type = "string" },
+                        side = new { type = "string" },
+                        target = new { type = "string" },
+                        linkedToPriorQuote = new { type = "string" }
+                    },
+                    required = new[]
+                    {
+                        "verb", "side", "target", "linkedToPriorQuote"
+                    },
+                    additionalProperties = false
+                },
+                llmHints = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        confidence = new { type = "string" },
+                        notes = new
+                        {
+                            type = "array",
+                            items = new
+                            {
+                                type = "string"
+                            }
+                        }
+                    },
+                    required = new[]
+                    {
+                        "confidence", "notes"
+                    },
+                    additionalProperties = false
+                }
             },
-            quote = new
+            required = new[]
             {
-                bid = "number|null",
-                ask = "number|null",
-                mid = "number|null",
-                quoteStyle = "string",
-                isFirm = "boolean|null"
+                "messageType", "eventType", "instrument", "quote", "action", "llmHints"
             },
-            action = new
-            {
-                verb = "string",
-                side = "string",
-                target = "string",
-                linkedToPriorQuote = "boolean|null"
-            },
-            contextUsage = new
-            {
-                usedContext = "boolean",
-                resolvedFromContext = "string[]",
-                unresolvedReferences = "string[]"
-            },
-            llmHints = new
-            {
-                confidence = "number|null",
-                notes = "string[]"
-            }
+            additionalProperties = false
         };
 
         return JsonSerializer.Serialize(schema, SerializerOptions);
@@ -128,34 +179,33 @@ public sealed class BrokerPromptBuilder : IBrokerPromptBuilder
     /// Builds the final prompt text for the LLM request.
     /// </summary>
     /// <param name="context">The parse context.</param>
-    /// <param name="currentResult">The current rule-based result.</param>
-    /// <param name="conversationStateJson">The conversation state JSON.</param>
-    /// <param name="priorMessagesJson">The prior messages JSON.</param>
-    /// <param name="outputSchemaJson">The output schema JSON.</param>
+    /// <param name="currentParseResultJson">The serialized current parse result.</param>
+    /// <param name="conversationStateJson">The serialized conversation state.</param>
+    /// <param name="priorMessagesJson">The serialized prior messages.</param>
+    /// <param name="outputSchemaJson">The serialized output schema.</param>
     /// <returns>The rendered prompt text.</returns>
     private static string BuildPromptText(
         ParseContext context,
-        BrokerParseResult currentResult,
+        string currentParseResultJson,
         string conversationStateJson,
         string priorMessagesJson,
         string outputSchemaJson)
     {
         var builder = new StringBuilder();
 
-        builder.AppendLine("You are a strict broker price parser for FX options and broker chat language.");
-        builder.AppendLine("Return only valid JSON.");
-        builder.AppendLine("Do not invent missing values.");
-        builder.AppendLine("Prefer partial correctness over aggressive guessing.");
-        builder.AppendLine("Use the rule-based parse result as the starting point and only improve fields when justified.");
-        builder.AppendLine("If context is required, use the provided conversation state and prior messages.");
+        builder.AppendLine("You are a strict broker price parser for FX options broker chat.");
+        builder.AppendLine("Return JSON only.");
+        builder.AppendLine("Do not invent values.");
+        builder.AppendLine("Use empty strings for unknown scalar fields.");
+        builder.AppendLine("Use an empty array for llmHints.notes when there are no notes.");
+        builder.AppendLine("Never output prose outside JSON.");
+        builder.AppendLine("Use the current rule-based parse result as the baseline and only improve missing or ambiguous fields.");
         builder.AppendLine();
-        builder.AppendLine("Rules:");
-        builder.AppendLine("1. Distinguish explicit information from context-resolved information.");
-        builder.AppendLine("2. Keep unresolved ambiguity visible.");
-        builder.AppendLine("3. Do not output prose outside JSON.");
-        builder.AppendLine("4. Broker action words such as TAKE, MINE, LIFT and PAID usually target ASK.");
-        builder.AppendLine("5. Broker action words such as HIT, SOLD, YOURS and SELLER usually target BID.");
-        builder.AppendLine("6. FLAT BID or FLAT OFFER usually refers to a prior quote level in context.");
+        builder.AppendLine("Interpretation rules:");
+        builder.AppendLine("- TAKE, MINE, LIFT, PAID, BUYER usually target ASK.");
+        builder.AppendLine("- HIT, SOLD, YOURS, SELLER usually target BID.");
+        builder.AppendLine("- FLAT BID and FLAT OFFER usually refer to the latest prior quote in context.");
+        builder.AppendLine("- Keep unresolved ambiguity visible by leaving fields empty rather than guessing.");
         builder.AppendLine();
         builder.AppendLine("Raw message:");
         builder.AppendLine(context.RawMessage.RawText);
@@ -164,7 +214,7 @@ public sealed class BrokerPromptBuilder : IBrokerPromptBuilder
         builder.AppendLine(context.NormalizedMessage.NormalizedText);
         builder.AppendLine();
         builder.AppendLine("Current rule-based parse result:");
-        builder.AppendLine(JsonSerializer.Serialize(currentResult, SerializerOptions));
+        builder.AppendLine(currentParseResultJson);
         builder.AppendLine();
         builder.AppendLine("Conversation state:");
         builder.AppendLine(conversationStateJson);
@@ -172,7 +222,7 @@ public sealed class BrokerPromptBuilder : IBrokerPromptBuilder
         builder.AppendLine("Prior messages:");
         builder.AppendLine(priorMessagesJson);
         builder.AppendLine();
-        builder.AppendLine("Expected output schema:");
+        builder.AppendLine("Output schema:");
         builder.AppendLine(outputSchemaJson);
 
         return builder.ToString();

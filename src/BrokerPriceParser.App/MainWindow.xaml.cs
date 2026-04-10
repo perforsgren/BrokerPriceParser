@@ -15,7 +15,6 @@ public partial class MainWindow : Window
     private readonly IBrokerMessageNormalizer _normalizer;
     private readonly IBrokerParseService _parseService;
     private readonly IConversationStateStore _stateStore;
-    private readonly IBrokerPromptBuilder _promptBuilder;
     private readonly BrokerLlmSettings _llmSettings;
 
     /// <summary>
@@ -29,7 +28,6 @@ public partial class MainWindow : Window
         _normalizer = (IBrokerMessageNormalizer)app.Services.GetService(typeof(IBrokerMessageNormalizer))!;
         _parseService = (IBrokerParseService)app.Services.GetService(typeof(IBrokerParseService))!;
         _stateStore = (IConversationStateStore)app.Services.GetService(typeof(IConversationStateStore))!;
-        _promptBuilder = (IBrokerPromptBuilder)app.Services.GetService(typeof(IBrokerPromptBuilder))!;
         _llmSettings = (BrokerLlmSettings)app.Services.GetService(typeof(BrokerLlmSettings))!;
 
         Loaded += MainWindow_Loaded;
@@ -38,7 +36,7 @@ public partial class MainWindow : Window
     // ────────────────────────────────────
 
     /// <summary>
-    /// Runs a parser smoke test and shows the generated LLM prompt scaffold.
+    /// Runs a smoke test that shows live provider configuration and parser output.
     /// </summary>
     /// <param name="sender">The sender instance.</param>
     /// <param name="e">The event arguments.</param>
@@ -49,13 +47,19 @@ public partial class MainWindow : Window
         {
             "NOK/SEK 1Y 25 delta rr pls",
             "showing 0.10/0.30 good",
-            "ok take"
+            "ok take",
+            "mom int"
         };
 
-        ParseContext? lastContext = null;
-        BrokerParseResult? lastResult = null;
-
         var output = new StringBuilder();
+
+        output.AppendLine("LLM Provider Configuration");
+        output.AppendLine($"Enabled: {_llmSettings.IsEnabled}");
+        output.AppendLine($"Model: {_llmSettings.ModelName}");
+        output.AppendLine($"LowConfidenceOnly: {_llmSettings.UseOnlyForLowConfidence}");
+        output.AppendLine($"Threshold: {_llmSettings.LowConfidenceThreshold:F2}");
+        output.AppendLine($"API URL: {_llmSettings.ApiBaseUrl}");
+        output.AppendLine(new string('=', 70));
 
         for (var index = 0; index < inputs.Length; index++)
         {
@@ -82,9 +86,6 @@ public partial class MainWindow : Window
             var result = await _parseService.ParseAsync(context);
             _stateStore.Apply(conversationId, result, rawMessage.ReceivedUtc);
 
-            lastContext = context;
-            lastResult = result;
-
             output.AppendLine($"Input: {rawMessage.RawText}");
             output.AppendLine($"Normalized: {result.NormalizedMessage}");
             output.AppendLine($"MessageType: {result.MessageType}");
@@ -95,27 +96,22 @@ public partial class MainWindow : Window
             output.AppendLine($"Delta: {result.Instrument.Delta}");
             output.AppendLine($"Bid: {result.Quote.Bid}");
             output.AppendLine($"Ask: {result.Quote.Ask}");
-            output.AppendLine($"Action Verb: {result.Action.Verb}");
-            output.AppendLine($"Action Side: {result.Action.Side}");
-            output.AppendLine($"Action Target: {result.Action.Target}");
+            output.AppendLine($"Mid: {result.Quote.Mid}");
+            output.AppendLine($"QuoteStyle: {result.Quote.QuoteStyle}");
+            output.AppendLine($"IsFirm: {result.Quote.IsFirm}");
+            output.AppendLine($"ActionVerb: {result.Action.Verb}");
+            output.AppendLine($"ActionSide: {result.Action.Side}");
+            output.AppendLine($"ActionTarget: {result.Action.Target}");
+            output.AppendLine($"LinkedToPriorQuote: {result.Action.LinkedToPriorQuote}");
             output.AppendLine($"Confidence: {result.Quality.Confidence:F2}");
-            output.AppendLine(new string('-', 60));
-        }
-
-        if (lastContext is not null && lastResult is not null)
-        {
-            var llmRequest = _promptBuilder.Build(lastContext, lastResult, _llmSettings);
-
-            output.AppendLine("LLM Enabled:");
-            output.AppendLine(_llmSettings.IsEnabled.ToString());
-            output.AppendLine(new string('-', 60));
-            output.AppendLine("Generated Prompt Preview:");
-            output.AppendLine(llmRequest.Prompt);
+            output.AppendLine($"ValidationErrors: {string.Join(", ", result.Quality.ValidationErrors)}");
+            output.AppendLine($"AmbiguityFlags: {string.Join(", ", result.Quality.AmbiguityFlags)}");
+            output.AppendLine(new string('-', 70));
         }
 
         MessageBox.Show(
             output.ToString(),
-            "Broker Parser Step 6 Smoke Test",
+            "Broker Parser Step 7 Smoke Test",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
     }

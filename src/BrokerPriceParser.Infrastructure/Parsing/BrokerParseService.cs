@@ -81,6 +81,8 @@ public sealed class BrokerParseService : IBrokerParseService
             .EnrichAsync(context, result, _llmSettings, cancellationToken)
             .ConfigureAwait(false);
 
+        result.EventType = ResolveEventType(result);
+
         var finalValidationErrors = _validationService.Validate(result);
 
         result.Quality = new BrokerParseQuality
