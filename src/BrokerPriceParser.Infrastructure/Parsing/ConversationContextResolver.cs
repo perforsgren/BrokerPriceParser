@@ -1,4 +1,5 @@
-﻿using System.Text.RegularExpressions;
+﻿using System.Globalization;
+using System.Text.RegularExpressions;
 using BrokerPriceParser.Core.Contracts;
 using BrokerPriceParser.Core.Enums;
 using BrokerPriceParser.Core.Models;
@@ -28,6 +29,7 @@ public sealed class ConversationContextResolver : IConversationContextResolver
         ApplyExplicitInstrumentHints(context.NormalizedMessage, currentResult);
         ExtractExplicitQuote(context.NormalizedMessage.NormalizedText, currentResult);
         ExtractExplicitAction(context.NormalizedMessage.NormalizedText, currentResult);
+        ApplyQuoteFirmness(context.NormalizedMessage.NormalizedText, currentResult);
         InheritInstrumentFromState(context, currentResult, resolvedFields);
         ResolvePriceUpdateFromState(context, currentResult, resolvedFields, unresolvedReferences);
         ResolveActionFromState(context, currentResult, resolvedFields, unresolvedReferences);
@@ -125,7 +127,7 @@ public sealed class ConversationContextResolver : IConversationContextResolver
     // ────────────────────────────────────
 
     /// <summary>
-    /// Extracts an explicit action verb from normalized text when present.
+    /// Extracts an explicit action verb and optional explicit action price from normalized text.
     /// </summary>
     /// <param name="text">The normalized text.</param>
     /// <param name="result">The result to update.</param>
@@ -139,6 +141,61 @@ public sealed class ConversationContextResolver : IConversationContextResolver
         result.Action.Verb = verb;
         result.Action.Side = side;
         result.Provenance.ActionSource = FieldSourceType.Explicit;
+
+        if (!TryExtractStandalonePrice(text, out var explicitPrice))
+        {
+            return;
+        }
+
+        switch (side)
+        {
+            case "ASK":
+                result.Quote.Ask = explicitPrice;
+                result.Quote.QuoteStyle = QuoteStyle.AskOnly;
+                result.Provenance.PriceSource = FieldSourceType.Explicit;
+                result.Action.Target = FormatDecimal(explicitPrice);
+                break;
+
+            case "BID":
+                result.Quote.Bid = explicitPrice;
+                result.Quote.QuoteStyle = QuoteStyle.BidOnly;
+                result.Provenance.PriceSource = FieldSourceType.Explicit;
+                result.Action.Target = FormatDecimal(explicitPrice);
+                break;
+
+            case "MID":
+                result.Quote.Mid = explicitPrice;
+                result.Quote.QuoteStyle = QuoteStyle.MidOnly;
+                result.Provenance.PriceSource = FieldSourceType.Explicit;
+                result.Action.Target = FormatDecimal(explicitPrice);
+                break;
+        }
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Applies quote firmness markers such as GOOD, FIRM or INDICATIVE when a quote is present.
+    /// </summary>
+    /// <param name="text">The normalized text.</param>
+    /// <param name="result">The result to update.</param>
+    private static void ApplyQuoteFirmness(string text, BrokerParseResult result)
+    {
+        if (!ContainsQuoteData(result.Quote))
+        {
+            return;
+        }
+
+        if (Regex.IsMatch(text, @"\b(IND|INDICATIVE)\b"))
+        {
+            result.Quote.IsFirm = false;
+            return;
+        }
+
+        if (Regex.IsMatch(text, @"\b(GOOD|FIRM|CAN DO|WORKABLE)\b"))
+        {
+            result.Quote.IsFirm = true;
+        }
     }
 
     // ────────────────────────────────────
@@ -160,11 +217,6 @@ public sealed class ConversationContextResolver : IConversationContextResolver
         }
 
         var stateInstrument = context.ConversationState.CurrentInstrument;
-
-        if (stateInstrument is null)
-        {
-            return;
-        }
 
         if (string.IsNullOrWhiteSpace(result.Instrument.Pair) && !string.IsNullOrWhiteSpace(stateInstrument.Pair))
         {
@@ -220,7 +272,7 @@ public sealed class ConversationContextResolver : IConversationContextResolver
             return;
         }
 
-        if (result.Quote.Bid.HasValue || result.Quote.Ask.HasValue || result.Quote.Mid.HasValue)
+        if (ContainsQuoteData(result.Quote))
         {
             return;
         }
@@ -234,6 +286,7 @@ public sealed class ConversationContextResolver : IConversationContextResolver
             {
                 result.Quote.Bid = latestQuote.Bid.Value;
                 result.Quote.QuoteStyle = QuoteStyle.BidOnly;
+                result.Quote.IsFirm = latestQuote.IsFirm;
                 result.Provenance.PriceSource = FieldSourceType.InferredFromContext;
                 resolvedFields.Add("Quote.Bid");
             }
@@ -251,6 +304,7 @@ public sealed class ConversationContextResolver : IConversationContextResolver
             {
                 result.Quote.Ask = latestQuote.Ask.Value;
                 result.Quote.QuoteStyle = QuoteStyle.AskOnly;
+                result.Quote.IsFirm = latestQuote.IsFirm;
                 result.Provenance.PriceSource = FieldSourceType.InferredFromContext;
                 resolvedFields.Add("Quote.Ask");
             }
@@ -268,6 +322,7 @@ public sealed class ConversationContextResolver : IConversationContextResolver
             {
                 result.Quote.Mid = latestQuote.Mid.Value;
                 result.Quote.QuoteStyle = QuoteStyle.MidOnly;
+                result.Quote.IsFirm = latestQuote.IsFirm;
                 result.Provenance.PriceSource = FieldSourceType.InferredFromContext;
                 resolvedFields.Add("Quote.Mid");
             }
@@ -299,27 +354,127 @@ public sealed class ConversationContextResolver : IConversationContextResolver
         }
 
         var latestQuote = context.ConversationState.LatestQuote;
-        var hasPriorQuote = latestQuote.Bid.HasValue || latestQuote.Ask.HasValue || latestQuote.Mid.HasValue;
+        var hasExplicitActionPrice = ContainsQuoteData(result.Quote);
 
-        if (hasPriorQuote)
+        if (string.IsNullOrWhiteSpace(result.Action.Side))
         {
-            result.Action.LinkedToPriorQuote = true;
-            resolvedFields.Add("Action.LinkedToPriorQuote");
+            InferActionSideFromOneWayState(latestQuote, result, resolvedFields);
         }
-        else
+
+        if (hasExplicitActionPrice)
         {
             result.Action.LinkedToPriorQuote = false;
-            unresolvedReferences.Add("ActionWithoutPriorQuote");
-        }
 
-        if (!string.IsNullOrWhiteSpace(result.Action.Side))
-        {
+            if (string.IsNullOrWhiteSpace(result.Action.Target))
+            {
+                result.Action.Target = ResolveExplicitPriceTarget(result.Quote);
+            }
+
             return;
         }
 
-        if (result.Action.Verb == "DONE")
+        var hasPriorQuote = ContainsQuoteData(latestQuote);
+
+        if (!hasPriorQuote)
         {
-            unresolvedReferences.Add("DoneWithoutResolvedSide");
+            result.Action.LinkedToPriorQuote = false;
+            unresolvedReferences.Add("ActionWithoutPriorQuote");
+            return;
+        }
+
+        result.Action.LinkedToPriorQuote = true;
+        resolvedFields.Add("Action.LinkedToPriorQuote");
+
+        switch (result.Action.Side)
+        {
+            case "ASK":
+                if (latestQuote.Ask.HasValue)
+                {
+                    result.Quote.Ask = latestQuote.Ask.Value;
+                    result.Quote.QuoteStyle = QuoteStyle.AskOnly;
+                    result.Quote.IsFirm = latestQuote.IsFirm;
+                    result.Provenance.PriceSource = FieldSourceType.InferredFromContext;
+                    result.Action.Target = "LATEST_ASK";
+                    resolvedFields.Add("Quote.Ask");
+                }
+                else
+                {
+                    unresolvedReferences.Add("AskActionWithoutPriorAsk");
+                }
+
+                break;
+
+            case "BID":
+                if (latestQuote.Bid.HasValue)
+                {
+                    result.Quote.Bid = latestQuote.Bid.Value;
+                    result.Quote.QuoteStyle = QuoteStyle.BidOnly;
+                    result.Quote.IsFirm = latestQuote.IsFirm;
+                    result.Provenance.PriceSource = FieldSourceType.InferredFromContext;
+                    result.Action.Target = "LATEST_BID";
+                    resolvedFields.Add("Quote.Bid");
+                }
+                else
+                {
+                    unresolvedReferences.Add("BidActionWithoutPriorBid");
+                }
+
+                break;
+
+            case "MID":
+                if (latestQuote.Mid.HasValue)
+                {
+                    result.Quote.Mid = latestQuote.Mid.Value;
+                    result.Quote.QuoteStyle = QuoteStyle.MidOnly;
+                    result.Quote.IsFirm = latestQuote.IsFirm;
+                    result.Provenance.PriceSource = FieldSourceType.InferredFromContext;
+                    result.Action.Target = "LATEST_MID";
+                    resolvedFields.Add("Quote.Mid");
+                }
+                else
+                {
+                    unresolvedReferences.Add("MidActionWithoutPriorMid");
+                }
+
+                break;
+
+            default:
+                unresolvedReferences.Add("DoneWithoutResolvedSide");
+                break;
+        }
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Tries to infer an action side from a one-way quote currently stored in state.
+    /// </summary>
+    /// <param name="latestQuote">The latest quote in state.</param>
+    /// <param name="result">The result to update.</param>
+    /// <param name="resolvedFields">The resolved field list.</param>
+    private static void InferActionSideFromOneWayState(
+        BrokerQuote latestQuote,
+        BrokerParseResult result,
+        ICollection<string> resolvedFields)
+    {
+        var hasOnlyBid = latestQuote.Bid.HasValue && !latestQuote.Ask.HasValue && !latestQuote.Mid.HasValue;
+        var hasOnlyAsk = latestQuote.Ask.HasValue && !latestQuote.Bid.HasValue && !latestQuote.Mid.HasValue;
+        var hasOnlyMid = latestQuote.Mid.HasValue && !latestQuote.Bid.HasValue && !latestQuote.Ask.HasValue;
+
+        if (hasOnlyBid)
+        {
+            result.Action.Side = "BID";
+            resolvedFields.Add("Action.Side");
+        }
+        else if (hasOnlyAsk)
+        {
+            result.Action.Side = "ASK";
+            resolvedFields.Add("Action.Side");
+        }
+        else if (hasOnlyMid)
+        {
+            result.Action.Side = "MID";
+            resolvedFields.Add("Action.Side");
         }
     }
 
@@ -337,8 +492,8 @@ public sealed class ConversationContextResolver : IConversationContextResolver
         var match = Regex.Match(text, @"(?<!\d)(-?\d+(?:\.\d+)?)\s*/\s*(-?\d+(?:\.\d+)?)");
 
         if (match.Success
-            && decimal.TryParse(match.Groups[1].Value, out bid)
-            && decimal.TryParse(match.Groups[2].Value, out ask))
+            && TryParseDecimalInvariant(match.Groups[1].Value, out bid)
+            && TryParseDecimalInvariant(match.Groups[2].Value, out ask))
         {
             return true;
         }
@@ -359,26 +514,25 @@ public sealed class ConversationContextResolver : IConversationContextResolver
     /// <returns><c>true</c> if extraction succeeded; otherwise <c>false</c>.</returns>
     private static bool TryExtractOneWayQuote(string text, out string side, out decimal value)
     {
-        var match = Regex.Match(text, @"\b(BID|ASK|OFFER|OFR|MID)\b\s*(-?\d+(?:\.\d+)?)");
+        var prefixMatch = Regex.Match(text, @"\b(BID|ASK|OFFER|OFR|MID|PAYING|OFFERING)\b\s*(-?\d+(?:\.\d+)?)");
 
-        if (!match.Success || !decimal.TryParse(match.Groups[2].Value, out value))
+        if (prefixMatch.Success && TryParseDecimalInvariant(prefixMatch.Groups[2].Value, out value))
         {
-            side = string.Empty;
-            value = default;
-            return false;
+            side = NormalizeQuoteSide(prefixMatch.Groups[1].Value);
+            return !string.IsNullOrWhiteSpace(side);
         }
 
-        side = match.Groups[1].Value switch
-        {
-            "BID" => "BID",
-            "ASK" => "ASK",
-            "OFFER" => "ASK",
-            "OFR" => "ASK",
-            "MID" => "MID",
-            _ => string.Empty
-        };
+        var suffixMatch = Regex.Match(text, @"(-?\d+(?:\.\d+)?)\s*\b(BID|ASK|OFFER|OFR|MID)\b");
 
-        return !string.IsNullOrWhiteSpace(side);
+        if (suffixMatch.Success && TryParseDecimalInvariant(suffixMatch.Groups[1].Value, out value))
+        {
+            side = NormalizeQuoteSide(suffixMatch.Groups[2].Value);
+            return !string.IsNullOrWhiteSpace(side);
+        }
+
+        side = string.Empty;
+        value = default;
+        return false;
     }
 
     // ────────────────────────────────────
@@ -418,12 +572,144 @@ public sealed class ConversationContextResolver : IConversationContextResolver
         if (Regex.IsMatch(text, @"\bDONE\b"))
         {
             verb = "DONE";
-            side = string.Empty;
+
+            if (Regex.IsMatch(text, @"\b(BID)\b"))
+            {
+                side = "BID";
+            }
+            else if (Regex.IsMatch(text, @"\b(ASK|OFFER|OFR)\b"))
+            {
+                side = "ASK";
+            }
+            else if (Regex.IsMatch(text, @"\bMID\b"))
+            {
+                side = "MID";
+            }
+            else
+            {
+                side = string.Empty;
+            }
+
             return true;
         }
 
         verb = string.Empty;
         side = string.Empty;
         return false;
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Tries to extract a standalone decimal price from normalized text.
+    /// </summary>
+    /// <param name="text">The normalized text.</param>
+    /// <param name="value">The extracted value.</param>
+    /// <returns><c>true</c> if a price was extracted; otherwise <c>false</c>.</returns>
+    private static bool TryExtractStandalonePrice(string text, out decimal value)
+    {
+        var match = Regex.Match(text, @"(?<!/)(?<!\d)(-?\d+(?:\.\d+)?)(?!\s*/)(?!/\d)");
+
+        if (match.Success && TryParseDecimalInvariant(match.Groups[1].Value, out value))
+        {
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Normalizes quote-side aliases into BID, ASK or MID.
+    /// </summary>
+    /// <param name="rawSide">The raw side token.</param>
+    /// <returns>The normalized side.</returns>
+    private static string NormalizeQuoteSide(string rawSide)
+    {
+        return rawSide switch
+        {
+            "BID" => "BID",
+            "ASK" => "ASK",
+            "OFFER" => "ASK",
+            "OFR" => "ASK",
+            "MID" => "MID",
+            "PAYING" => "BID",
+            "OFFERING" => "ASK",
+            _ => string.Empty
+        };
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Resolves the explicit price target string from a quote snapshot.
+    /// </summary>
+    /// <param name="quote">The quote snapshot.</param>
+    /// <returns>The resolved target string.</returns>
+    private static string ResolveExplicitPriceTarget(BrokerQuote quote)
+    {
+        if (quote.Ask.HasValue)
+        {
+            return FormatDecimal(quote.Ask.Value);
+        }
+
+        if (quote.Bid.HasValue)
+        {
+            return FormatDecimal(quote.Bid.Value);
+        }
+
+        if (quote.Mid.HasValue)
+        {
+            return FormatDecimal(quote.Mid.Value);
+        }
+
+        return string.Empty;
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Determines whether a quote contains any meaningful data.
+    /// </summary>
+    /// <param name="quote">The quote to inspect.</param>
+    /// <returns><c>true</c> if the quote contains data; otherwise <c>false</c>.</returns>
+    private static bool ContainsQuoteData(BrokerQuote quote)
+    {
+        return quote.Bid.HasValue
+            || quote.Ask.HasValue
+            || quote.Mid.HasValue
+            || quote.IsFirm.HasValue
+            || quote.QuoteStyle != QuoteStyle.Unknown;
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Parses a decimal value using invariant culture.
+    /// </summary>
+    /// <param name="text">The text to parse.</param>
+    /// <param name="value">The parsed value.</param>
+    /// <returns><c>true</c> if parsing succeeded; otherwise <c>false</c>.</returns>
+    private static bool TryParseDecimalInvariant(string text, out decimal value)
+    {
+        return decimal.TryParse(
+            text,
+            NumberStyles.Number | NumberStyles.AllowLeadingSign,
+            CultureInfo.InvariantCulture,
+            out value);
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Formats a decimal value using invariant culture without unnecessary trailing zeroes.
+    /// </summary>
+    /// <param name="value">The value to format.</param>
+    /// <returns>The formatted value.</returns>
+    private static string FormatDecimal(decimal value)
+    {
+        return value.ToString("0.################", CultureInfo.InvariantCulture);
     }
 }

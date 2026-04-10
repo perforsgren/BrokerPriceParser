@@ -43,8 +43,10 @@ public partial class MainWindow : Window
         var inputs = new[]
         {
             "NOK/SEK 1Y 25 delta rr pls",
-            "0.10/0.30",
-            "ok take"
+            "showing 0.10/0.30 good",
+            "flat bid",
+            "paid 0.30",
+            "0.27 offer"
         };
 
         var output = new StringBuilder();
@@ -84,8 +86,12 @@ public partial class MainWindow : Window
             output.AppendLine($"Delta: {result.Instrument.Delta}");
             output.AppendLine($"Bid: {result.Quote.Bid}");
             output.AppendLine($"Ask: {result.Quote.Ask}");
+            output.AppendLine($"Mid: {result.Quote.Mid}");
+            output.AppendLine($"Quote Style: {result.Quote.QuoteStyle}");
+            output.AppendLine($"Is Firm: {result.Quote.IsFirm}");
             output.AppendLine($"Action Verb: {result.Action.Verb}");
             output.AppendLine($"Action Side: {result.Action.Side}");
+            output.AppendLine($"Action Target: {result.Action.Target}");
             output.AppendLine($"Linked To Prior Quote: {result.Action.LinkedToPriorQuote}");
             output.AppendLine($"Used Context: {result.ContextUsage.UsedContext}");
             output.AppendLine($"Resolved From Context: {string.Join(", ", result.ContextUsage.ResolvedFromContext)}");
@@ -95,7 +101,7 @@ public partial class MainWindow : Window
 
         MessageBox.Show(
             output.ToString(),
-            "Broker Parser Stateful Smoke Test",
+            "Broker Parser Quote/Action v2 Smoke Test",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
     }

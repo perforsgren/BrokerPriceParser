@@ -106,6 +106,7 @@ public sealed class BrokerMessageClassifier : IBrokerMessageClassifier
 
         var hasQuoteContext =
             LooksLikeTwoWayQuote(text)
+            || LooksLikeOneWayQuote(text)
             || Regex.IsMatch(text, @"\b(BID|OFFER|OFR|ASK|MID)\b")
             || Regex.IsMatch(text, @"-?\d+(\.\d+)?");
 
@@ -139,14 +140,21 @@ public sealed class BrokerMessageClassifier : IBrokerMessageClassifier
     // ────────────────────────────────────
 
     /// <summary>
-    /// Detects a one-way quote combined with bid, offer, ask or mid language.
+    /// Detects one-way quote patterns such as BID 0.15, 0.15 BID, PAYING 0.12 or OFFERING 0.25.
     /// </summary>
     /// <param name="text">The normalized text.</param>
     /// <returns><c>true</c> if the text looks like a one-way quote; otherwise <c>false</c>.</returns>
     private static bool LooksLikeOneWayQuote(string text)
     {
-        return Regex.IsMatch(text, @"\b(BID|OFFER|OFR|ASK|MID)\b")
-            && Regex.IsMatch(text, @"-?\d+(\.\d+)?");
+        var prefixMatch = Regex.IsMatch(
+            text,
+            @"\b(BID|ASK|OFFER|OFR|MID|PAYING|OFFERING)\b\s*(-?\d+(\.\d+)?)");
+
+        var suffixMatch = Regex.IsMatch(
+            text,
+            @"(-?\d+(\.\d+)?)\s*\b(BID|ASK|OFFER|OFR|MID)\b");
+
+        return prefixMatch || suffixMatch;
     }
 
     // ────────────────────────────────────
