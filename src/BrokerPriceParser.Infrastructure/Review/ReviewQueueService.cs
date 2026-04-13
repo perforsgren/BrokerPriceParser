@@ -127,6 +127,9 @@ public sealed class ReviewQueueService : IReviewQueueService
             $"Action: Verb={ValueOrDash(result.Action.Verb)}, Side={ValueOrDash(result.Action.Side)}, Target={ValueOrDash(result.Action.Target)}, Linked={result.Action.LinkedToPriorQuote?.ToString() ?? "-"}");
 
         builder.AppendLine(
+            $"Interest: Side={ValueOrDash(result.Interest.Side)}, Description={ValueOrDash(result.Interest.Description)}");
+
+        builder.AppendLine(
             $"Context: Used={result.ContextUsage.UsedContext}, Resolved={string.Join(", ", result.ContextUsage.ResolvedFromContext)}, Unresolved={string.Join(", ", result.ContextUsage.UnresolvedReferences)}");
 
         return builder.ToString().TrimEnd();

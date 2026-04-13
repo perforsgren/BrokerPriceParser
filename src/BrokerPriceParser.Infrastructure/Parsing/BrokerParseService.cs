@@ -112,6 +112,7 @@ public sealed class BrokerParseService : IBrokerParseService
             BrokerMessageType.PriceUpdate => BrokerEventType.QuoteRevised,
             BrokerMessageType.Clarification => BrokerEventType.ClarificationRequested,
             BrokerMessageType.ActionIntent => ResolveActionEventType(result.Action),
+            BrokerMessageType.InterestIndication => BrokerEventType.MarketInterestIndicated,
             _ => BrokerEventType.None
         };
     }

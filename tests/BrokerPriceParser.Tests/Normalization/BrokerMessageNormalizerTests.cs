@@ -168,4 +168,32 @@ public sealed class BrokerMessageNormalizerTests
         Assert.Equal("1M", result.DetectedTenor);
         Assert.Equal("BF", result.DetectedStructure);
     }
+
+
+    /// <summary>
+    /// Verifies that broker shorthand can imply an XXXUSD pair and shorthand delta before BF is normalized correctly.
+    /// </summary>
+    [Fact]
+    public void Normalize_ShouldDetectImplicitUsdPairAndShorthandDelta_ForSingleCurrencyBrokerShorthand()
+    {
+        var normalizer = new BrokerMessageNormalizer();
+
+        var message = new RawBrokerMessage
+        {
+            MessageId = "T6",
+            ConversationId = "C1",
+            RawText = "EUR 1M 10 BFLY 0.9/1.0",
+            ReceivedUtc = DateTime.UtcNow
+        };
+
+        var result = normalizer.Normalize(message);
+
+        Assert.Equal("EUR 1M 10D BF 0.9/1.0", result.NormalizedText);
+        Assert.Equal("EURUSD", result.DetectedCurrencyPair);
+        Assert.Equal("1M", result.DetectedTenor);
+        Assert.Equal("BF", result.DetectedStructure);
+        Assert.Equal(10m, result.DetectedDelta);
+        Assert.Contains("NormalizeStructureAliases", result.AppliedNormalizationRules);
+        Assert.Contains("NormalizeShorthandDeltaBeforeStructure", result.AppliedNormalizationRules);
+    }
 }

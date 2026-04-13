@@ -28,6 +28,11 @@ public sealed class ConversationState
     public BrokerAction LatestAction { get; set; } = new();
 
     /// <summary>
+    /// Gets or sets the latest market interest in scope.
+    /// </summary>
+    public BrokerInterest LatestInterest { get; set; } = new();
+
+    /// <summary>
     /// Gets or sets the latest message identifier applied to this state.
     /// </summary>
     public string LatestMessageId { get; set; } = string.Empty;

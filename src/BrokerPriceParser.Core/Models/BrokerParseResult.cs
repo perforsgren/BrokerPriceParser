@@ -49,6 +49,11 @@ public sealed class BrokerParseResult
     public BrokerAction Action { get; set; } = new();
 
     /// <summary>
+    /// Gets or sets the resolved market interest.
+    /// </summary>
+    public BrokerInterest Interest { get; set; } = new();
+
+    /// <summary>
     /// Gets or sets context usage information.
     /// </summary>
     public ContextUsage ContextUsage { get; set; } = new();

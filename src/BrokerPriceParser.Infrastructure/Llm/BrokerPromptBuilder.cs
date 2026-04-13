@@ -205,6 +205,7 @@ public sealed class BrokerPromptBuilder : IBrokerPromptBuilder
         builder.AppendLine("- TAKE, MINE, LIFT and PAID usually target ASK.");
         builder.AppendLine("- HIT, SOLD and YOURS usually target BID.");
         builder.AppendLine("- BUYER and SELLER usually indicate directional interest, not completed execution.");
+        builder.AppendLine("- Single-currency shorthand such as EUR or NOK may imply EURUSD or NOKUSD when tenor, structure or quote context is present.");
         builder.AppendLine("- FLAT BID and FLAT OFFER usually refer to the latest prior quote in context.");
         builder.AppendLine("- Keep unresolved ambiguity visible by leaving fields empty rather than guessing.");
         builder.AppendLine();

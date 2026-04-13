@@ -889,6 +889,7 @@ public partial class MainWindow : Window
             $"Instrument: Pair={ValueOrDash(result.Instrument.Pair)}, Tenor={ValueOrDash(result.Instrument.Tenor)}, Structure={ValueOrDash(result.Instrument.Structure)}, Delta={result.Instrument.Delta?.ToString() ?? "-"}{Environment.NewLine}" +
             $"Quote: Bid={result.Quote.Bid?.ToString() ?? "-"}, Ask={result.Quote.Ask?.ToString() ?? "-"}, Mid={result.Quote.Mid?.ToString() ?? "-"}, Style={result.Quote.QuoteStyle}, Firm={result.Quote.IsFirm?.ToString() ?? "-"}{Environment.NewLine}" +
             $"Action: Verb={ValueOrDash(result.Action.Verb)}, Side={ValueOrDash(result.Action.Side)}, Target={ValueOrDash(result.Action.Target)}, Linked={result.Action.LinkedToPriorQuote?.ToString() ?? "-"}{Environment.NewLine}" +
+            $"Interest: Side={ValueOrDash(result.Interest.Side)}, Description={ValueOrDash(result.Interest.Description)}{Environment.NewLine}" +
             $"Context: Used={result.ContextUsage.UsedContext}, Resolved={string.Join(", ", result.ContextUsage.ResolvedFromContext)}, Unresolved={string.Join(", ", result.ContextUsage.UnresolvedReferences)}";
     }
 

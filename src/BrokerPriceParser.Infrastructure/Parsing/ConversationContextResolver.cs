@@ -29,6 +29,7 @@ public sealed class ConversationContextResolver : IConversationContextResolver
         ApplyExplicitInstrumentHints(context.NormalizedMessage, currentResult);
         ExtractExplicitQuote(context.NormalizedMessage.NormalizedText, currentResult);
         ExtractExplicitAction(context.NormalizedMessage.NormalizedText, currentResult);
+        ExtractExplicitInterest(context.NormalizedMessage.NormalizedText, currentResult);
         ApplyQuoteFirmness(context.NormalizedMessage.NormalizedText, currentResult);
         InheritInstrumentFromState(context, currentResult, resolvedFields);
         ResolvePriceUpdateFromState(context, currentResult, resolvedFields, unresolvedReferences);
@@ -169,6 +170,29 @@ public sealed class ConversationContextResolver : IConversationContextResolver
                 result.Provenance.PriceSource = FieldSourceType.Explicit;
                 result.Action.Target = FormatDecimal(explicitPrice);
                 break;
+        }
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Extracts explicit market-interest language such as BUYER or SELLER.
+    /// </summary>
+    /// <param name="text">The normalized text.</param>
+    /// <param name="result">The result to update.</param>
+    private static void ExtractExplicitInterest(string text, BrokerParseResult result)
+    {
+        if (Regex.IsMatch(text, @"\bBUYER\b"))
+        {
+            result.Interest.Side = "BUYER";
+            result.Interest.Description = "Directional interest only";
+            return;
+        }
+
+        if (Regex.IsMatch(text, @"\bSELLER\b"))
+        {
+            result.Interest.Side = "SELLER";
+            result.Interest.Description = "Directional interest only";
         }
     }
 

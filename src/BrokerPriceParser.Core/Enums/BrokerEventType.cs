@@ -43,5 +43,10 @@ public enum BrokerEventType
     /// <summary>
     /// The message requests clarification.
     /// </summary>
-    ClarificationRequested = 7
+    ClarificationRequested = 7,
+
+    /// <summary>
+    /// The message indicates directional market interest.
+    /// </summary>
+    MarketInterestIndicated = 8
 }

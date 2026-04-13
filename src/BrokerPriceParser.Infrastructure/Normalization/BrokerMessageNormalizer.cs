@@ -34,8 +34,9 @@ public sealed class BrokerMessageNormalizer : IBrokerMessageNormalizer
         normalizedText = NormalizeWhitespace(normalizedText, rules);
         normalizedText = NormalizeCurrencyPair(normalizedText, rules);
         normalizedText = NormalizeAtmAliases(normalizedText, rules);
-        normalizedText = NormalizeDeltaTokens(normalizedText, rules);
         normalizedText = NormalizeStructureAliases(normalizedText, rules);
+        normalizedText = NormalizeShorthandDeltaBeforeStructure(normalizedText, rules);
+        normalizedText = NormalizeDeltaTokens(normalizedText, rules);
         normalizedText = NormalizeWhitespace(normalizedText, rules);
 
         var tokens = SplitTokens(normalizedText);
@@ -69,7 +70,7 @@ public sealed class BrokerMessageNormalizer : IBrokerMessageNormalizer
     {
         var output = input.Replace("Δ", "D", StringComparison.Ordinal);
 
-        if (!ReferenceEquals(output, input) && output != input)
+        if (output != input)
         {
             rules.Add("NormalizeGreekCharacters");
         }
@@ -170,29 +171,6 @@ public sealed class BrokerMessageNormalizer : IBrokerMessageNormalizer
     // ────────────────────────────────────
 
     /// <summary>
-    /// Normalizes common delta expressions into a compact D-suffixed format.
-    /// </summary>
-    /// <param name="input">The text to normalize.</param>
-    /// <param name="rules">The applied rule list.</param>
-    /// <returns>The updated text.</returns>
-    private static string NormalizeDeltaTokens(string input, ICollection<string> rules)
-    {
-        var output = input;
-
-        output = Regex.Replace(output, @"\b(\d{1,2})\s*DELTA\b", "$1D");
-        output = Regex.Replace(output, @"\b(\d{1,2})\s+D\b", "$1D");
-
-        if (output != input)
-        {
-            rules.Add("NormalizeDeltaTokens");
-        }
-
-        return output;
-    }
-
-    // ────────────────────────────────────
-
-    /// <summary>
     /// Normalizes structure aliases such as RISK REVERSAL, BFLY and FLY.
     /// </summary>
     /// <param name="input">The text to normalize.</param>
@@ -211,6 +189,49 @@ public sealed class BrokerMessageNormalizer : IBrokerMessageNormalizer
         if (output != input)
         {
             rules.Add("NormalizeStructureAliases");
+        }
+
+        return output;
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Normalizes shorthand delta syntax such as 10 RR or 10 BF into 10D RR or 10D BF.
+    /// </summary>
+    /// <param name="input">The text to normalize.</param>
+    /// <param name="rules">The applied rule list.</param>
+    /// <returns>The updated text.</returns>
+    private static string NormalizeShorthandDeltaBeforeStructure(string input, ICollection<string> rules)
+    {
+        var output = Regex.Replace(input, @"\b(\d{1,2})\s+(RR|BF)\b", "$1D $2");
+
+        if (output != input)
+        {
+            rules.Add("NormalizeShorthandDeltaBeforeStructure");
+        }
+
+        return output;
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Normalizes common delta expressions into a compact D-suffixed format.
+    /// </summary>
+    /// <param name="input">The text to normalize.</param>
+    /// <param name="rules">The applied rule list.</param>
+    /// <returns>The updated text.</returns>
+    private static string NormalizeDeltaTokens(string input, ICollection<string> rules)
+    {
+        var output = input;
+
+        output = Regex.Replace(output, @"\b(\d{1,2})\s*DELTA\b", "$1D");
+        output = Regex.Replace(output, @"\b(\d{1,2})\s+D\b", "$1D");
+
+        if (output != input)
+        {
+            rules.Add("NormalizeDeltaTokens");
         }
 
         return output;
@@ -239,8 +260,7 @@ public sealed class BrokerMessageNormalizer : IBrokerMessageNormalizer
             }
         }
 
-        var implicitUsdPair = DetectImplicitUsdPair(input);
-        return implicitUsdPair;
+        return DetectImplicitUsdPair(input);
     }
 
     // ────────────────────────────────────
@@ -269,7 +289,7 @@ public sealed class BrokerMessageNormalizer : IBrokerMessageNormalizer
                 || (index > 0 && Regex.IsMatch(tokens[index - 1], @"^\d+(D|W|M|Y)$"));
 
             var hasNearbyStructure =
-                tokens.Skip(index + 1).Take(3).Any(x => Regex.IsMatch(x, @"^(RR|BF|ATM|ATMF)$"));
+                tokens.Skip(index + 1).Take(4).Any(x => Regex.IsMatch(x, @"^(RR|BF|ATM|ATMF|STRANGLE)$"));
 
             var hasNearbyPrice =
                 Regex.IsMatch(input, @"(?<!\d)-?\d+(\.\d+)?\s*/\s*-?\d+(\.\d+)?")
@@ -286,17 +306,6 @@ public sealed class BrokerMessageNormalizer : IBrokerMessageNormalizer
     }
 
     // ────────────────────────────────────
-
-    /// <summary>
-    /// Determines whether a token is a supported non-USD currency that can imply an XXXUSD pair.
-    /// </summary>
-    /// <param name="token">The token to inspect.</param>
-    /// <returns><c>true</c> if the token can imply an XXXUSD pair; otherwise <c>false</c>.</returns>
-    private static bool IsSupportedNonUsdCurrencyToken(string token)
-    {
-        return SupportedCurrencies.Contains(token)
-            && !token.Equals("USD", StringComparison.OrdinalIgnoreCase);
-    }
 
     /// <summary>
     /// Detects the first tenor token in the message.
@@ -392,5 +401,18 @@ public sealed class BrokerMessageNormalizer : IBrokerMessageNormalizer
         return SupportedCurrencies.Contains(left)
             && SupportedCurrencies.Contains(right)
             && !left.Equals(right, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Determines whether a token is a supported non-USD currency that can imply an XXXUSD pair.
+    /// </summary>
+    /// <param name="token">The token to inspect.</param>
+    /// <returns><c>true</c> if the token can imply an XXXUSD pair; otherwise <c>false</c>.</returns>
+    private static bool IsSupportedNonUsdCurrencyToken(string token)
+    {
+        return SupportedCurrencies.Contains(token)
+            && !token.Equals("USD", StringComparison.OrdinalIgnoreCase);
     }
 }

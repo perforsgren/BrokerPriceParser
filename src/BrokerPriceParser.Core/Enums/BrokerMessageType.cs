@@ -38,5 +38,10 @@ public enum BrokerMessageType
     /// <summary>
     /// The message contains conversational noise or irrelevant content.
     /// </summary>
-    Noise = 6
+    Noise = 6,
+
+    /// <summary>
+    /// The message indicates directional market interest such as BUYER or SELLER.
+    /// </summary>
+    InterestIndication = 7
 }

@@ -58,6 +58,11 @@ public sealed class InMemoryConversationStateStore : IConversationStateStore
             state.LatestAction = MergeAction(state.LatestAction, result.Action);
         }
 
+        if (ContainsInterestData(result.Interest))
+        {
+            state.LatestInterest = MergeInterest(state.LatestInterest, result.Interest);
+        }
+
         state.LatestMessageId = result.MessageId;
         state.LatestUpdatedUtc = receivedUtc;
     }
@@ -123,6 +128,19 @@ public sealed class InMemoryConversationStateStore : IConversationStateStore
     // ────────────────────────────────────
 
     /// <summary>
+    /// Determines whether market interest contains any meaningful data.
+    /// </summary>
+    /// <param name="interest">The market interest to inspect.</param>
+    /// <returns><c>true</c> if the interest contains data; otherwise <c>false</c>.</returns>
+    private static bool ContainsInterestData(BrokerInterest interest)
+    {
+        return !string.IsNullOrWhiteSpace(interest.Side)
+            || !string.IsNullOrWhiteSpace(interest.Description);
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
     /// Merges a new instrument snapshot into the existing state instrument.
     /// </summary>
     /// <param name="existing">The existing instrument.</param>
@@ -181,6 +199,23 @@ public sealed class InMemoryConversationStateStore : IConversationStateStore
             Side = !string.IsNullOrWhiteSpace(current.Side) ? current.Side : existing.Side,
             Target = !string.IsNullOrWhiteSpace(current.Target) ? current.Target : existing.Target,
             LinkedToPriorQuote = current.LinkedToPriorQuote ?? existing.LinkedToPriorQuote
+        };
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Merges a new market-interest snapshot into the existing state market interest.
+    /// </summary>
+    /// <param name="existing">The existing market interest.</param>
+    /// <param name="current">The current market interest.</param>
+    /// <returns>The merged market interest.</returns>
+    private static BrokerInterest MergeInterest(BrokerInterest existing, BrokerInterest current)
+    {
+        return new BrokerInterest
+        {
+            Side = !string.IsNullOrWhiteSpace(current.Side) ? current.Side : existing.Side,
+            Description = !string.IsNullOrWhiteSpace(current.Description) ? current.Description : existing.Description
         };
     }
 }

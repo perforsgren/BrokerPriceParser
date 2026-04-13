@@ -76,6 +76,38 @@ public sealed class BrokerMessageClassifierV2Tests
     // ────────────────────────────────────
 
     /// <summary>
+    /// Verifies that BUYER is treated as directional interest rather than execution.
+    /// </summary>
+    [Fact]
+    public void Classify_ShouldReturnInterestIndication_ForBuyer()
+    {
+        var classifier = new BrokerMessageClassifier();
+        var message = Normalize("buyer");
+
+        var result = classifier.Classify(message);
+
+        Assert.Equal(BrokerMessageType.InterestIndication, result);
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Verifies that SELLER is treated as directional interest rather than execution.
+    /// </summary>
+    [Fact]
+    public void Classify_ShouldReturnInterestIndication_ForSeller()
+    {
+        var classifier = new BrokerMessageClassifier();
+        var message = Normalize("seller");
+
+        var result = classifier.Classify(message);
+
+        Assert.Equal(BrokerMessageType.InterestIndication, result);
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
     /// Normalizes raw text into a normalized broker message for classification tests.
     /// </summary>
     /// <param name="rawText">The raw text.</param>
@@ -95,35 +127,5 @@ public sealed class BrokerMessageClassifierV2Tests
         };
 
         return normalizer.Normalize(rawMessage);
-    }
-
-    /// <summary>
-    /// Verifies that BUYER is treated as a clarification or market-color message rather than an execution action.
-    /// </summary>
-    [Fact]
-    public void Classify_ShouldReturnClarification_ForBuyer()
-    {
-        var classifier = new BrokerMessageClassifier();
-        var message = Normalize("buyer");
-
-        var result = classifier.Classify(message);
-
-        Assert.Equal(BrokerMessageType.Clarification, result);
-    }
-
-    // ────────────────────────────────────
-
-    /// <summary>
-    /// Verifies that SELLER is treated as a clarification or market-color message rather than an execution action.
-    /// </summary>
-    [Fact]
-    public void Classify_ShouldReturnClarification_ForSeller()
-    {
-        var classifier = new BrokerMessageClassifier();
-        var message = Normalize("seller");
-
-        var result = classifier.Classify(message);
-
-        Assert.Equal(BrokerMessageType.Clarification, result);
     }
 }
