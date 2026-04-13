@@ -546,23 +546,21 @@ public sealed class ConversationContextResolver : IConversationContextResolver
     /// <returns><c>true</c> if extraction succeeded; otherwise <c>false</c>.</returns>
     private static bool TryExtractActionVerb(string text, out string verb, out string side)
     {
-        if (Regex.IsMatch(text, @"\b(TAKE|TAK|MINE|LIFT|PAID|BUYER)\b"))
+        if (Regex.IsMatch(text, @"\b(TAKE|TAK|MINE|LIFT|PAID)\b"))
         {
             verb = Regex.IsMatch(text, @"\bMINE\b") ? "MINE"
                 : Regex.IsMatch(text, @"\bLIFT\b") ? "LIFT"
                 : Regex.IsMatch(text, @"\bPAID\b") ? "PAID"
-                : Regex.IsMatch(text, @"\bBUYER\b") ? "BUYER"
                 : "TAKE";
 
             side = "ASK";
             return true;
         }
 
-        if (Regex.IsMatch(text, @"\b(HIT|SOLD|YOURS|SELLER)\b"))
+        if (Regex.IsMatch(text, @"\b(HIT|SOLD|YOURS)\b"))
         {
             verb = Regex.IsMatch(text, @"\bSOLD\b") ? "SOLD"
                 : Regex.IsMatch(text, @"\bYOURS\b") ? "YOURS"
-                : Regex.IsMatch(text, @"\bSELLER\b") ? "SELLER"
                 : "HIT";
 
             side = "BID";

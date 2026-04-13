@@ -96,4 +96,34 @@ public sealed class BrokerMessageClassifierV2Tests
 
         return normalizer.Normalize(rawMessage);
     }
+
+    /// <summary>
+    /// Verifies that BUYER is treated as a clarification or market-color message rather than an execution action.
+    /// </summary>
+    [Fact]
+    public void Classify_ShouldReturnClarification_ForBuyer()
+    {
+        var classifier = new BrokerMessageClassifier();
+        var message = Normalize("buyer");
+
+        var result = classifier.Classify(message);
+
+        Assert.Equal(BrokerMessageType.Clarification, result);
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Verifies that SELLER is treated as a clarification or market-color message rather than an execution action.
+    /// </summary>
+    [Fact]
+    public void Classify_ShouldReturnClarification_ForSeller()
+    {
+        var classifier = new BrokerMessageClassifier();
+        var message = Normalize("seller");
+
+        var result = classifier.Classify(message);
+
+        Assert.Equal(BrokerMessageType.Clarification, result);
+    }
 }

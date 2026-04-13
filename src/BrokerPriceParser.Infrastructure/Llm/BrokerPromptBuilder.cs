@@ -202,8 +202,9 @@ public sealed class BrokerPromptBuilder : IBrokerPromptBuilder
         builder.AppendLine("Use the current rule-based parse result as the baseline and only improve missing or ambiguous fields.");
         builder.AppendLine();
         builder.AppendLine("Interpretation rules:");
-        builder.AppendLine("- TAKE, MINE, LIFT, PAID, BUYER usually target ASK.");
-        builder.AppendLine("- HIT, SOLD, YOURS, SELLER usually target BID.");
+        builder.AppendLine("- TAKE, MINE, LIFT and PAID usually target ASK.");
+        builder.AppendLine("- HIT, SOLD and YOURS usually target BID.");
+        builder.AppendLine("- BUYER and SELLER usually indicate directional interest, not completed execution.");
         builder.AppendLine("- FLAT BID and FLAT OFFER usually refer to the latest prior quote in context.");
         builder.AppendLine("- Keep unresolved ambiguity visible by leaving fields empty rather than guessing.");
         builder.AppendLine();

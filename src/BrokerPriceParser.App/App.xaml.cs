@@ -1,6 +1,7 @@
 ﻿using BrokerPriceParser.Core.Contracts;
 using BrokerPriceParser.Core.Llm;
 using BrokerPriceParser.Infrastructure.Classification;
+using BrokerPriceParser.Infrastructure.Export;
 using BrokerPriceParser.Infrastructure.Llm;
 using BrokerPriceParser.Infrastructure.Normalization;
 using BrokerPriceParser.Infrastructure.Parsing;
@@ -82,5 +83,7 @@ public partial class App : Application
         services.AddSingleton<IBrokerParseService, BrokerParseService>();
         services.AddSingleton<IReplayMessageReader, TextReplayMessageReader>();
         services.AddSingleton<IReviewQueueService, ReviewQueueService>();
+        services.AddSingleton<IReviewDecisionPersistenceService, ReviewDecisionPersistenceService>();
+        services.AddSingleton<IGoldLabelExportService, GoldLabelExportService>();
     }
 }

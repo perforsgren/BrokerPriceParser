@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using BrokerPriceParser.Core.Contracts;
@@ -6,7 +7,9 @@ using BrokerPriceParser.Core.Llm;
 using BrokerPriceParser.Core.Models;
 using BrokerPriceParser.Core.Review;
 using BrokerPriceParser.Core.State;
+using BrokerPriceParser.Core.Validation;
 using Microsoft.Win32;
+using System.Text.Json.Serialization;
 
 namespace BrokerPriceParser.App;
 
@@ -15,11 +18,25 @@ namespace BrokerPriceParser.App;
 /// </summary>
 public partial class MainWindow : Window
 {
+    private static readonly JsonSerializerOptions SerializerOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNameCaseInsensitive = true,
+        Converters =
+        {
+            new JsonStringEnumConverter()
+        }
+    };
+
     private readonly IBrokerMessageNormalizer _normalizer;
     private readonly IBrokerParseService _parseService;
     private readonly IConversationStateStore _stateStore;
     private readonly IReplayMessageReader _replayMessageReader;
     private readonly IReviewQueueService _reviewQueueService;
+    private readonly IReviewDecisionPersistenceService _reviewDecisionPersistenceService;
+    private readonly IGoldLabelExportService _goldLabelExportService;
+    private readonly IBrokerValidationService _validationService;
+    private readonly IConfidenceScoringService _confidenceScoringService;
     private readonly BrokerLlmSettings _llmSettings;
     private readonly ObservableCollection<ReviewQueueItem> _reviewQueueItems = new();
 
@@ -37,10 +54,15 @@ public partial class MainWindow : Window
         _stateStore = (IConversationStateStore)app.Services.GetService(typeof(IConversationStateStore))!;
         _replayMessageReader = (IReplayMessageReader)app.Services.GetService(typeof(IReplayMessageReader))!;
         _reviewQueueService = (IReviewQueueService)app.Services.GetService(typeof(IReviewQueueService))!;
+        _reviewDecisionPersistenceService = (IReviewDecisionPersistenceService)app.Services.GetService(typeof(IReviewDecisionPersistenceService))!;
+        _goldLabelExportService = (IGoldLabelExportService)app.Services.GetService(typeof(IGoldLabelExportService))!;
+        _validationService = (IBrokerValidationService)app.Services.GetService(typeof(IBrokerValidationService))!;
+        _confidenceScoringService = (IConfidenceScoringService)app.Services.GetService(typeof(IConfidenceScoringService))!;
         _llmSettings = (BrokerLlmSettings)app.Services.GetService(typeof(BrokerLlmSettings))!;
 
         ReplayItemsDataGrid.ItemsSource = _reviewQueueItems;
         EnableLlmDuringReplayCheckBox.IsChecked = false;
+        ManualNotesTextBox.Text = string.Empty;
     }
 
     // ────────────────────────────────────
@@ -127,6 +149,126 @@ public partial class MainWindow : Window
     // ────────────────────────────────────
 
     /// <summary>
+    /// Saves the current review queue snapshot to a file.
+    /// </summary>
+    /// <param name="sender">The sender instance.</param>
+    /// <param name="e">The event arguments.</param>
+    private async void SaveDecisionsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Save Review Decisions",
+            Filter = "JSON files (*.json)|*.json",
+            FileName = "review-decisions.json"
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await _reviewDecisionPersistenceService.SaveAsync(dialog.FileName, _reviewQueueItems.ToArray());
+            UpdateStatusText();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                exception.Message,
+                "Save Decisions Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Loads a persisted review queue snapshot from a file.
+    /// </summary>
+    /// <param name="sender">The sender instance.</param>
+    /// <param name="e">The event arguments.</param>
+    private async void LoadDecisionsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Load Review Decisions",
+            Filter = "JSON files (*.json)|*.json"
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var items = await _reviewDecisionPersistenceService.LoadAsync(dialog.FileName);
+
+            _reviewQueueItems.Clear();
+
+            foreach (var item in items)
+            {
+                _reviewQueueItems.Add(item);
+            }
+
+            UpdateStatusText();
+
+            if (_reviewQueueItems.Count > 0)
+            {
+                ReplayItemsDataGrid.SelectedIndex = 0;
+            }
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                exception.Message,
+                "Load Decisions Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Exports reviewed queue items to a gold-label JSONL file.
+    /// </summary>
+    /// <param name="sender">The sender instance.</param>
+    /// <param name="e">The event arguments.</param>
+    private async void ExportGoldLabelsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export Gold Labels",
+            Filter = "JSONL files (*.jsonl)|*.jsonl",
+            FileName = "gold-labels.jsonl"
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await _goldLabelExportService.ExportAsync(dialog.FileName, _reviewQueueItems.ToArray());
+            UpdateStatusText();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                exception.Message,
+                "Export Gold Labels Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
     /// Marks the selected review item as accepted.
     /// </summary>
     /// <param name="sender">The sender instance.</param>
@@ -158,6 +300,128 @@ public partial class MainWindow : Window
     private void IgnoreSelectedButton_Click(object sender, RoutedEventArgs e)
     {
         UpdateSelectedReviewStatus(ReviewStatus.Ignored);
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Loads the original parser JSON into the manual editor.
+    /// </summary>
+    /// <param name="sender">The sender instance.</param>
+    /// <param name="e">The event arguments.</param>
+    private void LoadOriginalJsonButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ReplayItemsDataGrid.SelectedItem is not ReviewQueueItem item)
+        {
+            return;
+        }
+
+        EditableResultJsonTextBox.Text = item.OriginalResultJson;
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Loads the current parser JSON into the manual editor.
+    /// </summary>
+    /// <param name="sender">The sender instance.</param>
+    /// <param name="e">The event arguments.</param>
+    private void LoadCurrentJsonButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ReplayItemsDataGrid.SelectedItem is not ReviewQueueItem item)
+        {
+            return;
+        }
+
+        EditableResultJsonTextBox.Text = item.CurrentResultJson;
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Applies the edited JSON from the manual editor to the selected queue item.
+    /// </summary>
+    /// <param name="sender">The sender instance.</param>
+    /// <param name="e">The event arguments.</param>
+    private void ApplyEditedJsonButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ReplayItemsDataGrid.SelectedItem is not ReviewQueueItem item)
+        {
+            return;
+        }
+
+        try
+        {
+            var editedJson = EditableResultJsonTextBox.Text ?? string.Empty;
+
+            if (!TryDeserializeBrokerParseResult(editedJson, out var result))
+            {
+                MessageBox.Show(
+                    "The edited JSON could not be parsed into BrokerParseResult.",
+                    "Invalid JSON",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            NormalizeEditedResult(item, result);
+
+            item.CurrentResultJson = JsonSerializer.Serialize(result, SerializerOptions);
+            item.HasManualOverride = true;
+            item.ManualNotes = ManualNotesTextBox.Text ?? string.Empty;
+            item.ReviewStatus = ReviewStatus.Corrected;
+
+            UpdateItemFromResult(item, result);
+            ReplayItemsDataGrid.Items.Refresh();
+            ShowSelectedItemDetails(item);
+            UpdateStatusText();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                exception.Message,
+                "Apply Override Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Resets the selected review item back to its original parser result.
+    /// </summary>
+    /// <param name="sender">The sender instance.</param>
+    /// <param name="e">The event arguments.</param>
+    private void ResetSelectedButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ReplayItemsDataGrid.SelectedItem is not ReviewQueueItem item)
+        {
+            return;
+        }
+
+        if (!TryDeserializeBrokerParseResult(item.OriginalResultJson, out var result))
+        {
+            MessageBox.Show(
+                "The original parser JSON could not be restored.",
+                "Reset Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        item.CurrentResultJson = item.OriginalResultJson;
+        item.HasManualOverride = false;
+        item.ManualNotes = string.Empty;
+        item.ReviewStatus = ReviewStatus.Unreviewed;
+
+        UpdateItemFromResult(item, result);
+        EditableResultJsonTextBox.Text = item.CurrentResultJson;
+        ManualNotesTextBox.Text = item.ManualNotes;
+
+        ReplayItemsDataGrid.Items.Refresh();
+        ShowSelectedItemDetails(item);
+        UpdateStatusText();
     }
 
     // ────────────────────────────────────
@@ -419,6 +683,10 @@ public partial class MainWindow : Window
 
     // ────────────────────────────────────
 
+    /// <
+
+    /// <
+
     /// <summary>
     /// Returns the default conversation identifier from the UI.
     /// </summary>
@@ -459,15 +727,16 @@ public partial class MainWindow : Window
         var accepted = _reviewQueueItems.Count(x => x.ReviewStatus == ReviewStatus.Accepted);
         var corrected = _reviewQueueItems.Count(x => x.ReviewStatus == ReviewStatus.Corrected);
         var ignored = _reviewQueueItems.Count(x => x.ReviewStatus == ReviewStatus.Ignored);
+        var overrides = _reviewQueueItems.Count(x => x.HasManualOverride);
 
         StatusTextBlock.Text =
-            $"Rows={total} | RequiresReview={requiresReview} | Accepted={accepted} | Corrected={corrected} | Ignored={ignored} | LLMEnabled={_llmSettings.IsEnabled}";
+            $"Rows={total} | RequiresReview={requiresReview} | Accepted={accepted} | Corrected={corrected} | Ignored={ignored} | Overrides={overrides} | LLMEnabled={_llmSettings.IsEnabled}";
     }
 
     // ────────────────────────────────────
 
     /// <summary>
-    /// Shows the selected review item in the details panel.
+    /// Shows the selected review item in the details panel and loads the current JSON into the editor.
     /// </summary>
     /// <param name="item">The selected review item.</param>
     private void ShowSelectedItemDetails(ReviewQueueItem item)
@@ -479,7 +748,8 @@ public partial class MainWindow : Window
         SelectedAmbiguityFlagsTextBox.Text = item.AmbiguityFlagsText;
         SelectedReviewReasonTextBox.Text = item.ReviewReason;
         SelectedReviewStatusTextBlock.Text = $"Status: {item.ReviewStatus}";
-        SelectedResultJsonTextBox.Text = item.ResultJson;
+        ManualNotesTextBox.Text = item.ManualNotes;
+        EditableResultJsonTextBox.Text = item.CurrentResultJson;
     }
 
     // ────────────────────────────────────
@@ -496,7 +766,8 @@ public partial class MainWindow : Window
         SelectedAmbiguityFlagsTextBox.Text = string.Empty;
         SelectedReviewReasonTextBox.Text = string.Empty;
         SelectedReviewStatusTextBlock.Text = "Status: -";
-        SelectedResultJsonTextBox.Text = string.Empty;
+        ManualNotesTextBox.Text = string.Empty;
+        EditableResultJsonTextBox.Text = string.Empty;
     }
 
     // ────────────────────────────────────
@@ -513,8 +784,145 @@ public partial class MainWindow : Window
         }
 
         item.ReviewStatus = reviewStatus;
+        item.ManualNotes = ManualNotesTextBox.Text ?? string.Empty;
+
         ReplayItemsDataGrid.Items.Refresh();
         ShowSelectedItemDetails(item);
         UpdateStatusText();
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Normalizes an edited parse result before it is saved back to the selected queue item.
+    /// </summary>
+    /// <param name="item">The selected review item.</param>
+    /// <param name="result">The edited parse result.</param>
+    private void NormalizeEditedResult(ReviewQueueItem item, BrokerParseResult result)
+    {
+        result.MessageId = string.IsNullOrWhiteSpace(result.MessageId) ? item.MessageId : result.MessageId;
+        result.RawMessage = string.IsNullOrWhiteSpace(result.RawMessage) ? item.RawText : result.RawMessage;
+        result.NormalizedMessage = string.IsNullOrWhiteSpace(result.NormalizedMessage) ? item.NormalizedText : result.NormalizedMessage;
+
+        var validationErrors = _validationService.Validate(result);
+
+        result.Quality = new BrokerParseQuality
+        {
+            ValidationErrors = validationErrors,
+            AmbiguityFlags = result.ContextUsage.UnresolvedReferences ?? Array.Empty<string>()
+        };
+
+        result.Quality.Confidence = _confidenceScoringService.Calculate(result);
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Updates the visible queue item fields from a parse result.
+    /// </summary>
+    /// <param name="item">The queue item.</param>
+    /// <param name="result">The parse result.</param>
+    private void UpdateItemFromResult(ReviewQueueItem item, BrokerParseResult result)
+    {
+        item.MessageType = result.MessageType;
+        item.EventType = result.EventType;
+        item.Confidence = result.Quality.Confidence;
+        item.ContextSummary = BuildContextSummary(result);
+        item.ValidationErrorsText = result.Quality.ValidationErrors.Count > 0
+            ? string.Join(Environment.NewLine, result.Quality.ValidationErrors)
+            : "None";
+        item.AmbiguityFlagsText = result.Quality.AmbiguityFlags.Count > 0
+            ? string.Join(Environment.NewLine, result.Quality.AmbiguityFlags)
+            : "None";
+        item.RequiresReview = result.MessageType == Core.Enums.BrokerMessageType.Unknown
+            || result.Quality.Confidence < ReadReviewThreshold()
+            || result.Quality.ValidationErrors.Count > 0
+            || result.Quality.AmbiguityFlags.Count > 0;
+        item.ReviewReason = BuildReviewReason(result, ReadReviewThreshold());
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Builds a review reason string from a parse result.
+    /// </summary>
+    /// <param name="result">The parse result.</param>
+    /// <param name="threshold">The review threshold.</param>
+    /// <returns>A review reason string.</returns>
+    private static string BuildReviewReason(BrokerParseResult result, double threshold)
+    {
+        var reasons = new List<string>();
+
+        if (result.MessageType == Core.Enums.BrokerMessageType.Unknown)
+        {
+            reasons.Add("UnknownMessageType");
+        }
+
+        if (result.Quality.Confidence < threshold)
+        {
+            reasons.Add($"LowConfidence<{threshold:F2}");
+        }
+
+        if (result.Quality.ValidationErrors.Count > 0)
+        {
+            reasons.Add("ValidationErrors");
+        }
+
+        if (result.Quality.AmbiguityFlags.Count > 0)
+        {
+            reasons.Add("AmbiguityFlags");
+        }
+
+        return reasons.Count > 0 ? string.Join(" | ", reasons) : "No review required";
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Builds a compact human-readable summary of the parse result.
+    /// </summary>
+    /// <param name="result">The parse result.</param>
+    /// <returns>A context summary string.</returns>
+    private static string BuildContextSummary(BrokerParseResult result)
+    {
+        return
+            $"Instrument: Pair={ValueOrDash(result.Instrument.Pair)}, Tenor={ValueOrDash(result.Instrument.Tenor)}, Structure={ValueOrDash(result.Instrument.Structure)}, Delta={result.Instrument.Delta?.ToString() ?? "-"}{Environment.NewLine}" +
+            $"Quote: Bid={result.Quote.Bid?.ToString() ?? "-"}, Ask={result.Quote.Ask?.ToString() ?? "-"}, Mid={result.Quote.Mid?.ToString() ?? "-"}, Style={result.Quote.QuoteStyle}, Firm={result.Quote.IsFirm?.ToString() ?? "-"}{Environment.NewLine}" +
+            $"Action: Verb={ValueOrDash(result.Action.Verb)}, Side={ValueOrDash(result.Action.Side)}, Target={ValueOrDash(result.Action.Target)}, Linked={result.Action.LinkedToPriorQuote?.ToString() ?? "-"}{Environment.NewLine}" +
+            $"Context: Used={result.ContextUsage.UsedContext}, Resolved={string.Join(", ", result.ContextUsage.ResolvedFromContext)}, Unresolved={string.Join(", ", result.ContextUsage.UnresolvedReferences)}";
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Deserializes a broker parse result from JSON.
+    /// </summary>
+    /// <param name="json">The JSON payload.</param>
+    /// <param name="result">The deserialized parse result.</param>
+    /// <returns><c>true</c> if deserialization succeeded; otherwise <c>false</c>.</returns>
+    private static bool TryDeserializeBrokerParseResult(string json, out BrokerParseResult result)
+    {
+        try
+        {
+            result = JsonSerializer.Deserialize<BrokerParseResult>(json, SerializerOptions) ?? new BrokerParseResult();
+            return true;
+        }
+        catch
+        {
+            result = new BrokerParseResult();
+            return false;
+        }
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Returns a dash when the supplied value is blank.
+    /// </summary>
+    /// <param name="value">The input value.</param>
+    /// <returns>The original value or a dash.</returns>
+    private static string ValueOrDash(string value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "-" : value;
     }
 }

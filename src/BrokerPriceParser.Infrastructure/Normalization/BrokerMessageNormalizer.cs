@@ -193,7 +193,7 @@ public sealed class BrokerMessageNormalizer : IBrokerMessageNormalizer
     // ────────────────────────────────────
 
     /// <summary>
-    /// Normalizes structure aliases such as RISK REVERSAL and FLY.
+    /// Normalizes structure aliases such as RISK REVERSAL, BFLY and FLY.
     /// </summary>
     /// <param name="input">The text to normalize.</param>
     /// <param name="rules">The applied rule list.</param>
@@ -205,6 +205,7 @@ public sealed class BrokerMessageNormalizer : IBrokerMessageNormalizer
         output = Regex.Replace(output, @"\bRISK\s+REVERSAL\b", "RR");
         output = Regex.Replace(output, @"\bRISK\s+REV\b", "RR");
         output = Regex.Replace(output, @"\bBUTTERFLY\b", "BF");
+        output = Regex.Replace(output, @"\bBFLY\b", "BF");
         output = Regex.Replace(output, @"\bFLY\b", "BF");
 
         if (output != input)
@@ -218,15 +219,15 @@ public sealed class BrokerMessageNormalizer : IBrokerMessageNormalizer
     // ────────────────────────────────────
 
     /// <summary>
-    /// Detects the first valid normalized currency pair in the message.
+    /// Detects the first valid currency pair in the message, including conservative implicit USD pairs.
     /// </summary>
     /// <param name="input">The normalized text.</param>
     /// <returns>The detected pair, or an empty string if not found.</returns>
     private static string DetectCurrencyPair(string input)
     {
-        var matches = Regex.Matches(input, @"\b([A-Z]{6})\b");
+        var explicitMatches = Regex.Matches(input, @"\b([A-Z]{6})\b");
 
-        foreach (Match match in matches)
+        foreach (Match match in explicitMatches)
         {
             var candidate = match.Value;
             var left = candidate[..3];
@@ -238,10 +239,64 @@ public sealed class BrokerMessageNormalizer : IBrokerMessageNormalizer
             }
         }
 
+        var implicitUsdPair = DetectImplicitUsdPair(input);
+        return implicitUsdPair;
+    }
+
+    // ────────────────────────────────────
+
+    /// <summary>
+    /// Detects an implicit XXXUSD pair when the broker omits USD and only the base currency is written.
+    /// </summary>
+    /// <param name="input">The normalized text.</param>
+    /// <returns>The inferred XXXUSD pair, or an empty string if none is detected.</returns>
+    private static string DetectImplicitUsdPair(string input)
+    {
+        var tokens = input
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        for (var index = 0; index < tokens.Length; index++)
+        {
+            var token = tokens[index];
+
+            if (!IsSupportedNonUsdCurrencyToken(token))
+            {
+                continue;
+            }
+
+            var hasNearbyTenor =
+                (index + 1 < tokens.Length && Regex.IsMatch(tokens[index + 1], @"^\d+(D|W|M|Y)$"))
+                || (index > 0 && Regex.IsMatch(tokens[index - 1], @"^\d+(D|W|M|Y)$"));
+
+            var hasNearbyStructure =
+                tokens.Skip(index + 1).Take(3).Any(x => Regex.IsMatch(x, @"^(RR|BF|ATM|ATMF)$"));
+
+            var hasNearbyPrice =
+                Regex.IsMatch(input, @"(?<!\d)-?\d+(\.\d+)?\s*/\s*-?\d+(\.\d+)?")
+                || Regex.IsMatch(input, @"\b(BID|ASK|OFFER|OFR|MID|PAYING|OFFERING)\b\s*-?\d+(\.\d+)?")
+                || Regex.IsMatch(input, @"-?\d+(\.\d+)?\s*\b(BID|ASK|OFFER|OFR|MID)\b");
+
+            if (hasNearbyTenor || hasNearbyStructure || hasNearbyPrice)
+            {
+                return token + "USD";
+            }
+        }
+
         return string.Empty;
     }
 
     // ────────────────────────────────────
+
+    /// <summary>
+    /// Determines whether a token is a supported non-USD currency that can imply an XXXUSD pair.
+    /// </summary>
+    /// <param name="token">The token to inspect.</param>
+    /// <returns><c>true</c> if the token can imply an XXXUSD pair; otherwise <c>false</c>.</returns>
+    private static bool IsSupportedNonUsdCurrencyToken(string token)
+    {
+        return SupportedCurrencies.Contains(token)
+            && !token.Equals("USD", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// Detects the first tenor token in the message.

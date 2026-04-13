@@ -4,6 +4,7 @@ using BrokerPriceParser.Core.Contracts;
 using BrokerPriceParser.Core.Enums;
 using BrokerPriceParser.Core.Models;
 using BrokerPriceParser.Core.Review;
+using System.Text.Json.Serialization;
 
 namespace BrokerPriceParser.Infrastructure.Review;
 
@@ -14,7 +15,11 @@ public sealed class ReviewQueueService : IReviewQueueService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
-        WriteIndented = true
+        WriteIndented = true,
+        Converters =
+        {
+            new JsonStringEnumConverter()
+        }
     };
 
     /// <summary>
@@ -35,6 +40,7 @@ public sealed class ReviewQueueService : IReviewQueueService
         ArgumentNullException.ThrowIfNull(normalizedMessage);
         ArgumentNullException.ThrowIfNull(result);
 
+        var serializedResult = JsonSerializer.Serialize(result, SerializerOptions);
         var reviewReasons = BuildReviewReasons(result, lowConfidenceThreshold);
         var requiresReview = reviewReasons.Count > 0;
 
@@ -51,7 +57,10 @@ public sealed class ReviewQueueService : IReviewQueueService
             RequiresReview = requiresReview,
             ReviewReason = requiresReview ? string.Join(" | ", reviewReasons) : "No review required",
             ReviewStatus = ReviewStatus.Unreviewed,
-            ResultJson = JsonSerializer.Serialize(result, SerializerOptions),
+            OriginalResultJson = serializedResult,
+            CurrentResultJson = serializedResult,
+            HasManualOverride = false,
+            ManualNotes = string.Empty,
             ContextSummary = BuildContextSummary(result),
             ValidationErrorsText = result.Quality.ValidationErrors.Count > 0
                 ? string.Join(Environment.NewLine, result.Quality.ValidationErrors)

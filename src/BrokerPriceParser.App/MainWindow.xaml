@@ -6,10 +6,10 @@
         xmlns:review="clr-namespace:BrokerPriceParser.Core.Review;assembly=BrokerPriceParser.Core"
         mc:Ignorable="d"
         Title="Broker Price Parser - Replay Review Tool"
-        Width="1600"
-        Height="980"
-        MinWidth="1200"
-        MinHeight="800">
+        Width="1700"
+        Height="1050"
+        MinWidth="1300"
+        MinHeight="850">
     <Window.Resources>
         <Style TargetType="DataGridRow">
             <Style.Triggers>
@@ -41,7 +41,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="320" />
+            <RowDefinition Height="430" />
         </Grid.RowDefinitions>
 
         <!-- Toolbar -->
@@ -70,6 +70,24 @@
                         Margin="0,0,16,8"
                         Content="Clear Queue"
                         Click="ClearQueueButton_Click" />
+
+                <Button Name="SaveDecisionsButton"
+                        Width="115"
+                        Margin="0,0,8,8"
+                        Content="Save Decisions"
+                        Click="SaveDecisionsButton_Click" />
+
+                <Button Name="LoadDecisionsButton"
+                        Width="115"
+                        Margin="0,0,8,8"
+                        Content="Load Decisions"
+                        Click="LoadDecisionsButton_Click" />
+
+                <Button Name="ExportGoldLabelsButton"
+                        Width="125"
+                        Margin="0,0,16,8"
+                        Content="Export Gold Labels"
+                        Click="ExportGoldLabelsButton_Click" />
 
                 <TextBlock Margin="0,6,8,8"
                            VerticalAlignment="Center"
@@ -157,6 +175,9 @@
                 <DataGridCheckBoxColumn Header="Review"
                                         Binding="{Binding RequiresReview}"
                                         Width="75" />
+                <DataGridCheckBoxColumn Header="Override"
+                                        Binding="{Binding HasManualOverride}"
+                                        Width="80" />
                 <DataGridTextColumn Header="Status"
                                     Binding="{Binding ReviewStatus}"
                                     Width="100" />
@@ -170,9 +191,9 @@
         <Grid Grid.Row="3"
               Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="1.2*" />
-                <ColumnDefinition Width="1*" />
-                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1.1*" />
+                <ColumnDefinition Width="0.9*" />
+                <ColumnDefinition Width="1.3*" />
             </Grid.ColumnDefinitions>
 
             <GroupBox Grid.Column="0"
@@ -181,9 +202,9 @@
                 <Grid Margin="8">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="80" />
+                        <RowDefinition Height="70" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="80" />
+                        <RowDefinition Height="70" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
@@ -226,9 +247,10 @@
                 <Grid Margin="8">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="80" />
+                        <RowDefinition Height="70" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="80" />
+                        <RowDefinition Height="70" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -269,14 +291,56 @@
                                FontSize="14"
                                FontWeight="Bold"
                                Text="Status: -" />
+
+                    <TextBox Name="ManualNotesTextBox"
+                             Grid.Row="7"
+                             Margin="0,12,0,0"
+                             AcceptsReturn="True"
+                             Height="70"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" />
                 </Grid>
             </GroupBox>
 
             <GroupBox Grid.Column="2"
-                      Header="Parse Result JSON">
+                      Header="Manual Override Editor">
                 <Grid Margin="8">
-                    <TextBox Name="SelectedResultJsonTextBox"
-                             IsReadOnly="True"
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <WrapPanel Grid.Row="0"
+                               Margin="0,0,0,8">
+                        <Button Name="LoadOriginalJsonButton"
+                                Width="130"
+                                Margin="0,0,8,8"
+                                Content="Load Original JSON"
+                                Click="LoadOriginalJsonButton_Click" />
+
+                        <Button Name="LoadCurrentJsonButton"
+                                Width="130"
+                                Margin="0,0,8,8"
+                                Content="Load Current JSON"
+                                Click="LoadCurrentJsonButton_Click" />
+
+                        <Button Name="ApplyEditedJsonButton"
+                                Width="130"
+                                Margin="0,0,8,8"
+                                Content="Apply Edited JSON"
+                                Click="ApplyEditedJsonButton_Click" />
+
+                        <Button Name="ResetSelectedButton"
+                                Width="120"
+                                Margin="0,0,8,8"
+                                Content="Reset Selected"
+                                Click="ResetSelectedButton_Click" />
+                    </WrapPanel>
+
+                    <TextBox Name="EditableResultJsonTextBox"
+                             Grid.Row="1"
+                             AcceptsReturn="True"
+                             AcceptsTab="True"
                              FontFamily="Consolas"
                              TextWrapping="NoWrap"
                              VerticalScrollBarVisibility="Auto"

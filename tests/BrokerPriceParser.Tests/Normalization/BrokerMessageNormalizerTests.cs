@@ -144,4 +144,28 @@ public sealed class BrokerMessageNormalizerTests
         Assert.Contains("NormalizeGreekCharacters", result.AppliedNormalizationRules);
         Assert.Contains("NormalizeStructureAliases", result.AppliedNormalizationRules);
     }
+
+    /// <summary>
+    /// Verifies that a single currency token can conservatively imply an XXXUSD pair in broker shorthand.
+    /// </summary>
+    [Fact]
+    public void Normalize_ShouldDetectImplicitUsdPair_ForSingleCurrencyBrokerShorthand()
+    {
+        var normalizer = new BrokerMessageNormalizer();
+
+        var message = new RawBrokerMessage
+        {
+            MessageId = "T6",
+            ConversationId = "C1",
+            RawText = "EUR 1M BFLY 0.9/1.0",
+            ReceivedUtc = DateTime.UtcNow
+        };
+
+        var result = normalizer.Normalize(message);
+
+        Assert.Equal("EUR 1M BF 0.9/1.0", result.NormalizedText);
+        Assert.Equal("EURUSD", result.DetectedCurrencyPair);
+        Assert.Equal("1M", result.DetectedTenor);
+        Assert.Equal("BF", result.DetectedStructure);
+    }
 }

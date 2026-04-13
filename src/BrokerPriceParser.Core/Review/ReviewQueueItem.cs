@@ -63,9 +63,24 @@ public sealed class ReviewQueueItem
     public ReviewStatus ReviewStatus { get; set; } = ReviewStatus.Unreviewed;
 
     /// <summary>
-    /// Gets or sets the serialized parse result JSON.
+    /// Gets or sets the original parser result JSON captured before any manual edits.
     /// </summary>
-    public string ResultJson { get; set; } = string.Empty;
+    public string OriginalResultJson { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the current parser result JSON, including manual overrides if applied.
+    /// </summary>
+    public string CurrentResultJson { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether a manual override has been applied.
+    /// </summary>
+    public bool HasManualOverride { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional manual notes written during review.
+    /// </summary>
+    public string ManualNotes { get; set; } = string.Empty;
 
     /// <summary>
     /// Gets or sets the human-readable context summary.

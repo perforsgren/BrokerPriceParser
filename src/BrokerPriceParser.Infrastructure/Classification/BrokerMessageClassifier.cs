@@ -83,7 +83,7 @@ public sealed class BrokerMessageClassifier : IBrokerMessageClassifier
     {
         return Regex.IsMatch(
             text,
-            @"\b(TAKE|TAK|MINE|LIFT|HIT|PAID|SOLD|YOURS|DONE|BUYER|SELLER)\b");
+            @"\b(TAKE|TAK|MINE|LIFT|HIT|PAID|SOLD|YOURS|DONE)\b");
     }
 
     // ────────────────────────────────────
@@ -207,10 +207,10 @@ public sealed class BrokerMessageClassifier : IBrokerMessageClassifier
     // ────────────────────────────────────
 
     /// <summary>
-    /// Detects clarification or follow-up messages such as WHAT ABOUT 2Y or SAME IN 3M.
+    /// Detects clarification, follow-up or directional-interest messages such as WHAT ABOUT 2Y, SAME IN 3M, BUYER or SELLER.
     /// </summary>
     /// <param name="text">The normalized text.</param>
-    /// <returns><c>true</c> if the text resembles a clarification; otherwise <c>false</c>.</returns>
+    /// <returns><c>true</c> if the text resembles a clarification or market-color message; otherwise <c>false</c>.</returns>
     private static bool LooksLikeClarification(string text)
     {
         if (Regex.IsMatch(text, @"\b(WHAT ABOUT|HOW ABOUT)\b"))
@@ -224,6 +224,11 @@ public sealed class BrokerMessageClassifier : IBrokerMessageClassifier
         }
 
         if (Regex.IsMatch(text, @"\bIN\s+\d+(D|W|M|Y)\b"))
+        {
+            return true;
+        }
+
+        if (Regex.IsMatch(text, @"\b(BUYER|SELLER)\b"))
         {
             return true;
         }
