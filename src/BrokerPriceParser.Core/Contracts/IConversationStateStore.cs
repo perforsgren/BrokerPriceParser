@@ -22,4 +22,9 @@ public interface IConversationStateStore
     /// <param name="result">The parse result to apply.</param>
     /// <param name="receivedUtc">The message received timestamp in UTC.</param>
     void Apply(string conversationId, BrokerParseResult result, DateTime receivedUtc);
+
+    /// <summary>
+    /// Clears all in-memory conversation state.
+    /// </summary>
+    void ClearAll();
 }

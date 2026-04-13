@@ -3,10 +3,286 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:BrokerPriceParser.App"
+        xmlns:review="clr-namespace:BrokerPriceParser.Core.Review;assembly=BrokerPriceParser.Core"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
+        Title="Broker Price Parser - Replay Review Tool"
+        Width="1600"
+        Height="980"
+        MinWidth="1200"
+        MinHeight="800">
+    <Window.Resources>
+        <Style TargetType="DataGridRow">
+            <Style.Triggers>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding RequiresReview}" Value="True" />
+                        <Condition Binding="{Binding ReviewStatus}" Value="{x:Static review:ReviewStatus.Unreviewed}" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Background" Value="MistyRose" />
+                </MultiDataTrigger>
 
+                <DataTrigger Binding="{Binding ReviewStatus}" Value="{x:Static review:ReviewStatus.Accepted}">
+                    <Setter Property="Background" Value="Honeydew" />
+                </DataTrigger>
+
+                <DataTrigger Binding="{Binding ReviewStatus}" Value="{x:Static review:ReviewStatus.Corrected}">
+                    <Setter Property="Background" Value="LemonChiffon" />
+                </DataTrigger>
+
+                <DataTrigger Binding="{Binding ReviewStatus}" Value="{x:Static review:ReviewStatus.Ignored}">
+                    <Setter Property="Background" Value="Gainsboro" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="320" />
+        </Grid.RowDefinitions>
+
+        <!-- Toolbar -->
+        <Border Grid.Row="0"
+                Padding="10"
+                BorderBrush="#D0D0D0"
+                BorderThickness="1"
+                CornerRadius="6">
+            <WrapPanel VerticalAlignment="Center"
+                       ItemHeight="32"
+                       ItemWidth="Auto">
+                <Button Name="OpenReplayFileButton"
+                        Width="130"
+                        Margin="0,0,8,8"
+                        Content="Open Replay File"
+                        Click="OpenReplayFileButton_Click" />
+
+                <Button Name="ReplaySampleButton"
+                        Width="120"
+                        Margin="0,0,8,8"
+                        Content="Replay Sample"
+                        Click="ReplaySampleButton_Click" />
+
+                <Button Name="ClearQueueButton"
+                        Width="100"
+                        Margin="0,0,16,8"
+                        Content="Clear Queue"
+                        Click="ClearQueueButton_Click" />
+
+                <TextBlock Margin="0,6,8,8"
+                           VerticalAlignment="Center"
+                           Text="Default Conversation ID:" />
+
+                <TextBox Name="DefaultConversationIdTextBox"
+                         Width="140"
+                         Margin="0,0,16,8"
+                         Text="REPLAY-001" />
+
+                <TextBlock Margin="0,6,8,8"
+                           VerticalAlignment="Center"
+                           Text="Review Threshold:" />
+
+                <TextBox Name="ReviewThresholdTextBox"
+                         Width="70"
+                         Margin="0,0,16,8"
+                         Text="0.55" />
+
+                <CheckBox Name="EnableLlmDuringReplayCheckBox"
+                          Margin="0,6,16,8"
+                          VerticalAlignment="Center"
+                          Content="Enable LLM during replay" />
+
+                <Button Name="AcceptSelectedButton"
+                        Width="110"
+                        Margin="0,0,8,8"
+                        Content="Accept Selected"
+                        Click="AcceptSelectedButton_Click" />
+
+                <Button Name="CorrectSelectedButton"
+                        Width="120"
+                        Margin="0,0,8,8"
+                        Content="Mark Corrected"
+                        Click="CorrectSelectedButton_Click" />
+
+                <Button Name="IgnoreSelectedButton"
+                        Width="110"
+                        Margin="0,0,8,8"
+                        Content="Ignore Selected"
+                        Click="IgnoreSelectedButton_Click" />
+            </WrapPanel>
+        </Border>
+
+        <!-- Status -->
+        <Border Grid.Row="1"
+                Margin="0,10,0,10"
+                Padding="10"
+                BorderBrush="#D0D0D0"
+                BorderThickness="1"
+                CornerRadius="6">
+            <TextBlock Name="StatusTextBlock"
+                       Text="Ready. Load a replay file or run the sample replay."
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <!-- Grid -->
+        <DataGrid Name="ReplayItemsDataGrid"
+                  Grid.Row="2"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  IsReadOnly="True"
+                  SelectionMode="Single"
+                  SelectionChanged="ReplayItemsDataGrid_SelectionChanged">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="#"
+                                    Binding="{Binding SequenceNumber}"
+                                    Width="55" />
+                <DataGridTextColumn Header="Conversation"
+                                    Binding="{Binding ConversationId}"
+                                    Width="110" />
+                <DataGridTextColumn Header="Raw Message"
+                                    Binding="{Binding RawText}"
+                                    Width="*" />
+                <DataGridTextColumn Header="Type"
+                                    Binding="{Binding MessageType}"
+                                    Width="115" />
+                <DataGridTextColumn Header="Event"
+                                    Binding="{Binding EventType}"
+                                    Width="115" />
+                <DataGridTextColumn Header="Confidence"
+                                    Binding="{Binding Confidence, StringFormat=F2}"
+                                    Width="90" />
+                <DataGridCheckBoxColumn Header="Review"
+                                        Binding="{Binding RequiresReview}"
+                                        Width="75" />
+                <DataGridTextColumn Header="Status"
+                                    Binding="{Binding ReviewStatus}"
+                                    Width="100" />
+                <DataGridTextColumn Header="Reason"
+                                    Binding="{Binding ReviewReason}"
+                                    Width="260" />
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Details -->
+        <Grid Grid.Row="3"
+              Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.2*" />
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1*" />
+            </Grid.ColumnDefinitions>
+
+            <GroupBox Grid.Column="0"
+                      Margin="0,0,10,0"
+                      Header="Selected Message">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="80" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="80" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Margin="0,0,0,4"
+                               FontWeight="Bold"
+                               Text="Raw Message" />
+                    <TextBox Name="SelectedRawMessageTextBox"
+                             Grid.Row="1"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" />
+
+                    <TextBlock Grid.Row="2"
+                               Margin="0,10,0,4"
+                               FontWeight="Bold"
+                               Text="Normalized Message" />
+                    <TextBox Name="SelectedNormalizedMessageTextBox"
+                             Grid.Row="3"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" />
+
+                    <TextBlock Grid.Row="4"
+                               Margin="0,10,0,4"
+                               FontWeight="Bold"
+                               Text="Context Summary" />
+                    <TextBox Name="SelectedContextSummaryTextBox"
+                             Grid.Row="5"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" />
+                </Grid>
+            </GroupBox>
+
+            <GroupBox Grid.Column="1"
+                      Margin="0,0,10,0"
+                      Header="Validation and Review">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="80" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="80" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Margin="0,0,0,4"
+                               FontWeight="Bold"
+                               Text="Validation Errors" />
+                    <TextBox Name="SelectedValidationErrorsTextBox"
+                             Grid.Row="1"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" />
+
+                    <TextBlock Grid.Row="2"
+                               Margin="0,10,0,4"
+                               FontWeight="Bold"
+                               Text="Ambiguity Flags" />
+                    <TextBox Name="SelectedAmbiguityFlagsTextBox"
+                             Grid.Row="3"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" />
+
+                    <TextBlock Grid.Row="4"
+                               Margin="0,10,0,4"
+                               FontWeight="Bold"
+                               Text="Review Reason" />
+                    <TextBox Name="SelectedReviewReasonTextBox"
+                             Grid.Row="5"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap" />
+
+                    <TextBlock Name="SelectedReviewStatusTextBlock"
+                               Grid.Row="6"
+                               Margin="0,12,0,0"
+                               FontSize="14"
+                               FontWeight="Bold"
+                               Text="Status: -" />
+                </Grid>
+            </GroupBox>
+
+            <GroupBox Grid.Column="2"
+                      Header="Parse Result JSON">
+                <Grid Margin="8">
+                    <TextBox Name="SelectedResultJsonTextBox"
+                             IsReadOnly="True"
+                             FontFamily="Consolas"
+                             TextWrapping="NoWrap"
+                             VerticalScrollBarVisibility="Auto"
+                             HorizontalScrollBarVisibility="Auto" />
+                </Grid>
+            </GroupBox>
+        </Grid>
     </Grid>
 </Window>

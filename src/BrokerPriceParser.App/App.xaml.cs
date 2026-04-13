@@ -4,6 +4,8 @@ using BrokerPriceParser.Infrastructure.Classification;
 using BrokerPriceParser.Infrastructure.Llm;
 using BrokerPriceParser.Infrastructure.Normalization;
 using BrokerPriceParser.Infrastructure.Parsing;
+using BrokerPriceParser.Infrastructure.Replay;
+using BrokerPriceParser.Infrastructure.Review;
 using BrokerPriceParser.Infrastructure.Scoring;
 using BrokerPriceParser.Infrastructure.State;
 using BrokerPriceParser.Infrastructure.Validation;
@@ -38,6 +40,8 @@ public partial class App : Application
         Services = services.BuildServiceProvider();
 
         var mainWindow = new MainWindow();
+        MainWindow = mainWindow;
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
         mainWindow.Show();
     }
 
@@ -56,7 +60,7 @@ public partial class App : Application
             IsEnabled = apiKeyExists,
             UseOnlyForLowConfidence = true,
             LowConfidenceThreshold = 0.55,
-            ModelName = "gpt-5",
+            ModelName = "gpt-5-mini",
             MaxPriorMessages = 5,
             ApiBaseUrl = "https://api.openai.com/v1/responses",
             ApiKeyEnvironmentVariableName = "OPENAI_API_KEY",
@@ -76,5 +80,7 @@ public partial class App : Application
         services.AddSingleton<IBrokerValidationService, BrokerValidationService>();
         services.AddSingleton<IConfidenceScoringService, ConfidenceScoringService>();
         services.AddSingleton<IBrokerParseService, BrokerParseService>();
+        services.AddSingleton<IReplayMessageReader, TextReplayMessageReader>();
+        services.AddSingleton<IReviewQueueService, ReviewQueueService>();
     }
 }

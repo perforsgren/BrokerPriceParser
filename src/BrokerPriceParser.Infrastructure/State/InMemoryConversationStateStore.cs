@@ -62,6 +62,14 @@ public sealed class InMemoryConversationStateStore : IConversationStateStore
         state.LatestUpdatedUtc = receivedUtc;
     }
 
+    /// <summary>
+    /// Clears all in-memory conversation state.
+    /// </summary>
+    public void ClearAll()
+    {
+        _states.Clear();
+    }
+
     // ────────────────────────────────────
 
     /// <summary>
